@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A static, single-page WRF/GFS weather forecast viewer. There is no build system, package manager, or test suite — `index.html` is a self-contained vanilla-JS/Leaflet app, and the rest of the repo is the forecast data it reads.
 
-This repo is **not** where forecasts are generated, and — since the cPanel migration — it is **not** where forecast data is published either. A pipeline on Metacentrum HPC (repo `wrf-forecast`) computes the WRF run, postprocesses it into JSON chunks + `manifest.json`, stages them under `web-stage/`, and that `data/` + `manifest.json` tree is uploaded to the **cPanel** host's `public_html/` (currently by hand — the Metacentrum→cPanel link is not live yet). This repo holds the **frontend app** (`index.html`/`css`/`js`/`logo`); the `data/` files committed here are samples/placeholders, not the live feed. GitHub Pages is no longer used.
+This repo is **not** where forecasts are generated, and — since the cPanel migration — it is **not** where forecast data is published either. A pipeline on Metacentrum HPC (repo `wrf-forecast`) computes the WRF run, postprocesses it into JSON chunks + `manifest.json`, stages them under `web-stage/`, and that `data/` + `manifest.json` tree is uploaded to the **cPanel** host's `public_html/` automatically at the end of every postprocess job. This repo holds the **frontend app** (`index.html`/`css`/`js`/`logo`); the `data/` files committed here are samples/placeholders, not the live feed. GitHub Pages is no longer used.
 
 ## Previewing locally
 
@@ -23,7 +23,16 @@ There's no linter or test command; verify UI changes by loading the page in a br
 
 The site is hosted on the university **cPanel** host only (GitHub Pages retired). Two independent concerns, kept separate on purpose:
 
-1. **Frontend app** (this repo: `index.html`/`css`/`js`/`logo`) — deployed by hand from a machine with cPanel access, via `rclone` (the cPanel host has no `rsync` binary). **Exclude `data/**` and `manifest.json`** so a frontend deploy never clobbers the live forecast data the HPC uploads.
+1. **Frontend app** (this repo: `index.html`/`css`/`js`) — deployed with `tools/deploy_frontend.sh` (since 2026-11-10; the old manual `rclone` way below is kept only as a fallback for a machine that has the `czuweb` remote):
+
+```bash
+bash tools/deploy_frontend.sh --dry-run   # list what would be uploaded
+bash tools/deploy_frontend.sh             # upload + verify, then: git push origin main && git push -f origin frontend-live
+```
+
+   The script uploads only git-tracked files under `index.html`, `css/`, `js/` that changed since the git tag `frontend-live` (content of `HEAD`, `index.html` last), through skirit (the cPanel key lives on MetaCentrum at `$STRG/.ssh/id_cpanel_czu`). It never touches `data/`, `manifest.json`, `logo/`, `boundaries/`, `.htaccess`, `cgi-bin/`, `.well-known/` and deletes nothing. It refuses to upload when the live site differs from `frontend-live`, and moves the tag only after the uploaded files were downloaded again and matched `HEAD`. Bump the `?v=` cache-busters in `index.html` when a css/js file changes.
+
+   Fallback (manual `rclone`, the cPanel host has no `rsync` binary). **Exclude `data/**` and `manifest.json`** so a frontend deploy never clobbers the live forecast data the HPC uploads.
 
 ```bash
 rclone sync --progress \
@@ -38,6 +47,10 @@ rclone sync --progress \
 
 - `czuweb` is a preconfigured rclone SFTP remote (`~/.config/rclone/rclone.conf`) pointing at the `czu-web` SSH alias (`srv.cpanel-czu.cz`, domain `weather-forecast.fzp.czu.cz`).
 - **Always keep the `.htaccess` / `.ftpquota` / `cgi-bin/**` / `.well-known/**` excludes.** `rclone sync` mirrors exactly and will delete anything on the remote that isn't in the local tree — those paths are cPanel/SSL-validation infrastructure, and dropping them breaks HTTPS redirects and future cert renewal. Always run with `--dry-run` first when changing the exclude list.
+
+## Data-source credits (licence requirement)
+
+`js/credits.js` holds the attribution each data provider's licence requires, keyed by the dataset's `model` in `manifest.json` (GFS, ARPEGE, ICON, GEM, IFS). The wording was copied from the providers' licence pages on 2026-11-10 (URLs in the file header); do not reword it. Three places show it: the `DATA: <provider>` link at the end of the top bar (`#m-src`), the panel it opens (`#credits`, all providers + base map), and the Leaflet attribution line of the driver currently on the map (hidden on phones, where the control bar covers it). `updateCredits()` runs from `initApp()` after every dataset switch. A new driver needs a new `CREDITS` entry before its data go public; ECMWF (IFS) in particular requires the sentence "This service is based on data and products of the European Centre for Medium-Range Weather Forecasts (ECMWF)", the source, the CC BY 4.0 statement and the disclaimer.
 
 ## Data flow & file format
 
