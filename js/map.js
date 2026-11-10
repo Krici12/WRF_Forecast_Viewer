@@ -50,6 +50,8 @@ function initApp(){
     attribution:'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
   }).addTo(map);
   L.control.zoom({position:'bottomright'}).addTo(map);
+  // Data-source attribution of the driver on the map (js/credits.js).
+  if(typeof updateCredits==='function')updateCredits();
 
   // Spočítat ořez na doménu WRF (pro hrubé "original" griddy).
   computeCrop();

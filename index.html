@@ -6,7 +6,7 @@
 <title>WRF Forecast Viewer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=5"/>
+<link rel="stylesheet" href="css/style.css?v=6"/>
 </head>
 <body>
 
@@ -41,6 +41,27 @@
   <span class="meta">STEPS: <span id="m-n">—</span></span>
   <span class="sep">|</span>
   <select id="dataset-switcher" class="dataset-select" disabled></select>
+  <span class="sep">|</span>
+  <button id="m-src" class="credit-link" onclick="toggleCredits()" title="Data sources and licences">DATA: —</button>
+</div>
+
+<!-- Data-source attribution required by the providers' licences (js/credits.js). -->
+<div id="credits" role="dialog" aria-label="Data sources and licences">
+  <button class="cr-close" onclick="toggleCredits(false)" title="Close">✕</button>
+  <div class="cr-title">DATA SOURCES AND LICENCES</div>
+  <div class="cr-intro">
+    Datasets named "+ WRF (3 km)" are forecasts of the WRF model computed at the
+    Czech University of Life Sciences Prague; the global model named in the dataset
+    supplies their initial and boundary conditions. The other datasets show that
+    global model's own 2 m temperature and precipitation, cropped and redrawn on
+    this map. In both cases the source data were modified; nothing shown here is an
+    official product of the providers below, and they do not endorse this service.
+  </div>
+  <div id="credits-body"></div>
+  <div class="cr-item">
+    <div class="cr-name">Base map</div>
+    <div class="cr-text">Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics</div>
+  </div>
 </div>
 
 <div id="layers">
@@ -94,9 +115,10 @@
 <script src="js/datasets.js"></script>
 <script src="js/layers.js"></script>
 <script src="js/boundaries.js?v=3"></script>
-<script src="js/map.js?v=7"></script>
+<script src="js/map.js?v=8"></script>
 <script src="js/controls.js"></script>
 <script src="js/tooltip.js"></script>
+<script src="js/credits.js?v=1"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════════════
 //  STATE

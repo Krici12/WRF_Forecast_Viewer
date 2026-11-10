@@ -91,6 +91,36 @@
   .dataset-select:disabled { opacity: 0.5; cursor: not-allowed; }
   .dataset-select option[disabled] { color: var(--muted); }
 
+  /* Data-source credit: link in the top bar + panel (js/credits.js) */
+  .credit-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace; font-size: inherit;
+    color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  }
+  .credit-link:hover { color: var(--text); }
+  #credits {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    z-index: 10001; display: none;
+    width: min(680px, calc(100vw - 28px)); max-height: calc(100vh - 100px); overflow-y: auto;
+    background: var(--solid); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+    font-size: 13px; line-height: 1.45;
+  }
+  #credits .cr-title {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
+    letter-spacing: 1.5px; color: var(--accent); margin-bottom: 10px;
+  }
+  #credits .cr-intro { color: var(--muted); margin-bottom: 12px; }
+  #credits .cr-item { border-top: 1px solid var(--border); padding: 10px 0; }
+  #credits .cr-name { font-weight: 600; }
+  #credits .cr-prod { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  #credits .cr-text { margin-top: 2px; }
+  #credits a { color: var(--accent); }
+  #credits .cr-close {
+    position: absolute; top: 10px; right: 12px; background: none; border: none;
+    font-size: 16px; cursor: pointer; color: var(--muted);
+  }
+
   #layers {
     position: fixed; top: 14px; left: 14px;
     z-index: 1000; display: none; flex-direction: column; gap: 8px;
@@ -263,6 +293,10 @@
 
   /* ★ MOBILNÍ RESPONZIVITA */
   @media (max-width: 768px) {
+    /* The bottom control bar covers the map's attribution line on phones and
+       a long line leaks out around it. The same credits (data providers and
+       map tiles) are in the DATA panel, opened from the top bar. */
+    .leaflet-control-attribution { display: none; }
     #topbar {
       top: 8px; left: 8px; right: 8px;
       transform: none; padding: 8px 12px;
