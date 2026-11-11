@@ -30,7 +30,7 @@ function initApp(){
   imgOv=null; isoSvg=null; offCanvas=null;
 
   const m=metadata;
-  document.getElementById('m-run').textContent=m.run_time||m.run_dir;
+  document.getElementById('m-run').textContent=fmtRun(m);
   document.getElementById('m-dom').textContent=`D0${m.domain}`;
   document.getElementById('m-dx').textContent=`${m.dx_m/1000} km`;
   document.getElementById('m-n').textContent=m.n_timesteps;
@@ -40,7 +40,9 @@ function initApp(){
   sl.value=0;
   buildTicks();
 
-  map=L.map('map',{center:[49.8,14.5],zoom:7,zoomControl:false});
+  // zoomSnap 0.1: fitBounds can fill the free area between the header and
+  // the bottom panel instead of dropping to the next whole zoom level.
+  map=L.map('map',{center:[49.8,14.5],zoom:7,zoomControl:false,zoomSnap:0.1});
 
   // --- Samotný podklad: jeden, jednoduchý, bez filtru -------------------------
   // Esri "World Light Gray Canvas" — neutrální šedo-bílý podklad, který záměrně
@@ -49,7 +51,7 @@ function initApp(){
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{
     attribution:'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
   }).addTo(map);
-  L.control.zoom({position:'bottomright'}).addTo(map);
+  L.control.zoom({position:'topright'}).addTo(map);
   // Data-source attribution of the driver on the map (js/credits.js).
   if(typeof updateCredits==='function')updateCredits();
 
@@ -71,7 +73,12 @@ function initApp(){
   g.setAttribute('class','isobar-layer');
   svgEl.appendChild(g);
 
-  map.fitBounds(bounds);
+  // Fit the domain into the part of the map that the header and the bottom
+  // panel leave free (both are already visible and filled at this point).
+  updateLegend();
+  const topH=document.getElementById('topbar').getBoundingClientRect().bottom;
+  const botH=window.innerHeight-document.getElementById('controls').getBoundingClientRect().top;
+  map.fitBounds(bounds,{paddingTopLeft:[6,topH+6],paddingBottomRight:[6,botH+6]});
 
   // Inicializovat hranice ČR a logo
   if(typeof initBoundaryLayer === 'function'){
@@ -82,7 +89,8 @@ function initApp(){
   }
 
   map.on('mousemove',onHover);
-  map.on('mouseout',()=>{document.getElementById('tip').style.display='none';});
+  map.on('click',onHover);   // tap on a phone
+  map.on('mouseout movestart',()=>{document.getElementById('tip').style.display='none';});
   map.on('moveend zoomend',render);
 
   setStep(0);

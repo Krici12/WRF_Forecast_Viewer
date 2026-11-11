@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 //  CONTROLS — ovládání času (step/play/speed) a vrstev (setVar/updateLegend)
 //  Načítá se PŘED hlavním <script> blokem v index.html (za js/map.js).
-//  Obsahuje: setStep, toCEST, go, togglePlay, cycleSpeed, setVar, updateLegend,
+//  Obsahuje: setStep, pragueTime, subText, fmtRun, sliderFill, go, togglePlay, cycleSpeed, setVar, updateLegend,
 //  buildTicks.
 //  Odkazuje na globály z hlavního bloku (step, varName, playing, playTmr, spdIdx,
 //  SPEEDS, metadata, allTimesteps, TEMP_STOPS, PREC_STOPS) a volá render() (map.js)
@@ -15,29 +15,59 @@ function setStep(idx){
   step=Math.max(0,Math.min(idx,metadata.n_timesteps-1));
   document.getElementById('slider').value=step;
   const ts=allTimesteps[step];
-  
-  const utcTime=ts.time.replace('T',' ')+' UTC';
-  const cestTime=toCEST(ts.time);
-  document.getElementById('t-display').textContent=`${utcTime} | ${cestTime} CEST`;
-  
-  document.getElementById('t-sub').textContent=
-    `step ${step+1} / ${metadata.n_timesteps}  ·  +${step}h from init`;
+
+  document.getElementById('t-display').textContent=pragueTime(ts.time);
+  document.getElementById('t-sub').textContent=subText(ts);
+  sliderFill();
   render();
 }
 
-function toCEST(isoStr){
+// Local (Prague) time of a UTC ISO string, e.g. "Wed 11 Nov · 01:00 CET".
+// The zone label follows daylight saving: UTC+1 = CET, UTC+2 = CEST.
+const _pragueFmt=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Prague',
+  weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+function pragueTime(isoStr){
   const d=new Date(isoStr+'Z');
-  const utcH=d.getUTCHours();
-  const cestH=(utcH+2)%24;
-  const mm=String(d.getUTCMinutes()).padStart(2,'0');
-  return`${String(cestH).padStart(2,'0')}:${mm}`;
+  const p={};
+  _pragueFmt.formatToParts(d).forEach(x=>{p[x.type]=x.value;});
+  const off=((+p.hour-d.getUTCHours())+24)%24;
+  return `${p.weekday} ${p.day} ${p.month} · ${p.hour}:${p.minute} ${off===2?'CEST':'CET'}`;
+}
+
+// Second line under the time: UTC time, lead time and step counter.
+function subText(ts){
+  const lead=leadHours(ts);
+  return `${ts.time.replace('T',' ').slice(0,16)} UTC · `+
+    (lead===null?'':`+${lead} h · `)+`step ${step+1} / ${metadata.n_timesteps}`;
+}
+
+// Lead time in hours counted from the model run (the first step on the web is
+// not always the run time). null until the run time is known.
+function leadHours(ts){
+  const r=metadata&&metadata.run_time;
+  if(!r||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r))return null;
+  const h=(new Date(ts.time+'Z')-new Date(r.slice(0,19)+'Z'))/3600000;
+  return Number.isFinite(h)?Math.round(h):null;
+}
+
+// Run time for the panel: "2026-11-10T06:00:00" -> "2026-11-10 06:00 UTC".
+function fmtRun(m){
+  const r=m.run_time||m.run_dir||'—';
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r) ? r.replace('T',' ').slice(0,16)+' UTC' : r;
+}
+
+// Paint the part of the slider track left of the thumb.
+function sliderFill(){
+  const sl=document.getElementById('slider');
+  const max=+sl.max||0;
+  sl.style.setProperty('--p',(max>0?(+sl.value/max*100):0)+'%');
 }
 
 function go(d){setStep(step+d);}
 
 function togglePlay(){
   playing=!playing;
-  document.getElementById('playbtn').textContent=playing?'⏸':'▶';
+  document.getElementById('playbtn').classList.toggle('playing',playing);
   if(playing){
     playTmr=setInterval(()=>
       setStep(step>=metadata.n_timesteps-1?0:step+1),
@@ -73,14 +103,25 @@ function updateLegend(){
   const isTmp=varName==='temp_c';
   const stops=isTmp?TEMP_STOPS:PREC_STOPS;
   const unit=isTmp?'[°C]':'[mm·h⁻¹]';
-  document.getElementById('leg-title').textContent=isTmp?`TEMPERATURE ${unit}`:`PRECIPITATION ${unit}`;
+  document.getElementById('leg-title').textContent=isTmp?`2 m temperature ${unit}`:`Precipitation ${unit}`;
   const minV=stops[0].v,maxV=stops[stops.length-1].v;
   const grad=stops.map(s=>
     `rgba(${s.r},${s.g},${s.b},${(s.a/255).toFixed(2)}) ${((s.v-minV)/(maxV-minV)*100).toFixed(0)}%`
   ).join(', ');
   document.getElementById('leg-bar').style.background=`linear-gradient(to right, ${grad})`;
-  document.getElementById('leg-labs').innerHTML=
-    `<span>${minV}${isTmp?'°C':''}</span><span>${((minV+maxV)/2).toFixed(0)}${isTmp?'°C':''}</span><span>${maxV}${isTmp?'°C':''}</span>`;
+  // Labels sit at their true position on the (linear) bar. Temperature: every
+  // 10 °C plus the upper end; precipitation: the colour stops. A label closer than 9 % of the bar
+  // to the previous one is skipped so they never overlap.
+  const cand=isTmp?[-30,-20,-10,0,10,20,30,maxV]:stops.map(s=>s.v);
+  let last=-99,html='';
+  cand.forEach(v=>{
+    const p=(v-minV)/(maxV-minV)*100;
+    if(p-last<9)return;
+    last=p;
+    const cls=p<3?' class="first"':(p>97?' class="last"':'');
+    html+=`<span${cls} style="left:${p.toFixed(1)}%">${v}</span>`;
+  });
+  document.getElementById('leg-labs').innerHTML=html;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -98,8 +139,9 @@ function updateSliderMax(){
   // Aktualizuj text počtu kroků
   const tSub = document.getElementById('t-sub');
   if(tSub && allTimesteps[step]){
-    tSub.textContent = `step ${step+1} / ${metadata.n_timesteps}  ·  +${step}h from init`;
+    tSub.textContent = subText(allTimesteps[step]);
   }
+  sliderFill();
 }
 
 // ══════════════════════════════════════════════════════════════════════════

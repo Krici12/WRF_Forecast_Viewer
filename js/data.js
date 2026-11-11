@@ -141,6 +141,12 @@ async function autoLoadFromManifest(manifest, dataset) {
 
   try {
     const files = dataset.files.slice().sort();
+    // Switching dataset: remember the valid time on screen so the new dataset
+    // opens at the same moment (runs start at different times), and start the
+    // new one cleanly at step 0 until that moment has loaded.
+    let keepTime = (allTimesteps[step] || {}).time || null;
+    initialRendered = false;
+    step = 0;
     allTimesteps = [];
 
     // 1) Grid is its own file now (it used to be duplicated in every chunk).
@@ -186,7 +192,7 @@ async function autoLoadFromManifest(manifest, dataset) {
         metadata.ny = metadata.ny || (g && g.ny);
         metadata.dx_m = metadata.dx_m || (g && g.dx_m);
         // Refine the topbar with the real run metadata from the first chunk.
-        document.getElementById('m-run').textContent = metadata.run_time || metadata.run_dir;
+        document.getElementById('m-run').textContent = fmtRun(metadata);
         document.getElementById('m-dom').textContent = 'D0' + metadata.domain;
         document.getElementById('m-dx').textContent = Math.round(metadata.dx_m / 1000) + ' km';
       }
@@ -207,6 +213,15 @@ async function autoLoadFromManifest(manifest, dataset) {
       if(!initialRendered && allTimesteps.length){
         initialRendered = true;
         if(typeof setStep === 'function') setStep(step);
+      }
+      // Jump to the remembered valid time once it has arrived, unless the
+      // user has already moved the slider themselves.
+      if(keepTime && step === 0 && typeof setStep === 'function'){
+        // First step at or after that time (datasets differ in time step).
+        const i = allTimesteps.findIndex(t => t.time >= keepTime);
+        if(i >= 0){ keepTime = null; setStep(i); }
+      } else if(step !== 0){
+        keepTime = null;
       }
     }
     more.style.display = 'none';

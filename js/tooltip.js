@@ -2,14 +2,10 @@
 //  TOOLTIP — popisek u myši (onHover)
 //  Načítá se PŘED hlavním <script> blokem v index.html (za js/controls.js).
 //  Odkazuje na globály z hlavního bloku (allTimesteps, gridData, step, map) —
-//  čte je až při volání. Registruje ji map.js (initApp) jako mousemove handler.
+//  čte je až při volání. Registruje ji map.js (initApp) jako mousemove handler
+//  a jako click handler (klepnutí na telefonu ukáže hodnoty v daném bodě).
 // ══════════════════════════════════════════════════════════════════════════
 function onHover(e){
-  if (window.innerWidth <= 768) {
-    document.getElementById('tip').style.display='none';
-    return;
-  }
-
   if(!allTimesteps.length)return;
   const g=gridData;
   const ts=allTimesteps[step];
@@ -55,6 +51,8 @@ function onHover(e){
   `;
   const tip=document.getElementById('tip');
   tip.style.display='block';
-  tip.style.left=(e.originalEvent.clientX+16)+'px';
-  tip.style.top=(e.originalEvent.clientY-10)+'px';
+  // Keep the box inside the window (a tap near the right edge on a phone).
+  const x=e.originalEvent.clientX, y=e.originalEvent.clientY;
+  tip.style.left=Math.max(8,Math.min(x+16,window.innerWidth-tip.offsetWidth-8))+'px';
+  tip.style.top=Math.max(8,Math.min(y-10,window.innerHeight-tip.offsetHeight-8))+'px';
 }

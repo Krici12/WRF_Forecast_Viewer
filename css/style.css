@@ -1,29 +1,37 @@
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
   :root {
-    --bg:     #f5f6f8;
-    --panel:  #ffffffd8;
+    --bg:     #eef1f5;
+    --panel:  rgba(255,255,255,0.94);
     --solid:  #ffffff;
-    --border: #d0d7de;
-    --accent: #0969da;
-    --text:   #24292f;
-    --muted:  #57606a;
-    --shadow: rgba(0,0,0,0.08);
+    --border: #d5dbe3;
+    --accent: #0b5fc0;
+    --accent-soft: rgba(11,95,192,0.10);
+    --text:   #1c2128;
+    --muted:  #4d5761;
+    --shadow: rgba(16,24,40,0.10);
+    --sans:   'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono:   'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+    --top-h:  60px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--sans);
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
+    -webkit-text-size-adjust: 100%;
   }
+  button, select, input { font-family: inherit; }
 
+  /* ── Loading and error overlays ─────────────────────────────────────── */
   #prog {
     position: fixed; inset: 0; background: var(--bg);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     z-index: 9999; gap: 12px;
   }
-  .prog-label { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted); letter-spacing: 1px; }
+  .prog-label { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 1px; }
   .spinner {
     width: 34px; height: 34px; border: 3px solid var(--border);
     border-top-color: var(--accent); border-radius: 50%;
@@ -32,16 +40,16 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* Error panel — shown instead of the infinite LOADING overlay when a chunk
-     fails to load, so the page never hangs on the CZU logo alone. */
+     fails to load, so the page never hangs on the spinner alone. */
   #error {
     position: fixed; inset: 0; background: var(--bg);
     display: none; flex-direction: column; align-items: center; justify-content: center;
     z-index: 9998; gap: 14px; text-align: center; padding: 24px;
   }
-  #error .err-title { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 1px; color: var(--accent); }
-  #error .err-msg   { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted); max-width: 560px; word-break: break-word; }
+  #error .err-title { font-size: 16px; font-weight: 600; color: var(--accent); }
+  #error .err-msg   { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: 560px; word-break: break-word; }
   #error .err-retry {
-    font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 1px;
+    font-size: 13px; font-weight: 500;
     background: var(--solid); color: var(--text); border: 1px solid var(--border);
     border-radius: 8px; padding: 9px 22px; cursor: pointer;
   }
@@ -49,218 +57,238 @@
 
   /* Small "loading more" pill while background chunks stream in. */
   #moreprog {
-    position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+    position: fixed; top: calc(var(--top-h) + 12px); left: 50%; transform: translateX(-50%);
     z-index: 1000; display: none;
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
     color: var(--muted); background: var(--panel); border: 1px solid var(--border);
     border-radius: 999px; padding: 5px 14px;
   }
 
+  /* ── Map ────────────────────────────────────────────────────────────── */
   #map { position: fixed; inset: 0; z-index: 1; }
-  .leaflet-container { background: #e8eef5 !important; }
+  .leaflet-container { background: #e8eef5 !important; font-family: var(--sans); }
+  /* Zoom buttons sit under the header. */
+  .leaflet-top.leaflet-right { margin-top: calc(var(--top-h) + 4px); margin-right: 4px; }
+  .leaflet-bar { border: 1px solid var(--border) !important; box-shadow: 0 1px 4px var(--shadow) !important; }
+  .leaflet-bar a { color: var(--text) !important; }
 
-  /* Odsazení zoom ovladače (vpravo dole), aby nekolidoval s legendou */
-  .leaflet-top.leaflet-right { margin-top: 14px; margin-right: 14px; }
-
+  /* ── Header ─────────────────────────────────────────────────────────── */
   #topbar {
-    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
-    z-index: 1000; background: var(--panel); backdrop-filter: blur(12px);
-    border: 1px solid var(--border); border-radius: 10px; padding: 9px 18px;
-    display: none; align-items: center; gap: 16px; box-shadow: 0 1px 4px var(--shadow);
-    font-family: 'IBM Plex Mono', monospace; font-size: 12px; white-space: nowrap;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    min-height: var(--top-h);
+    display: none; align-items: center; gap: 14px; padding: 0 18px;
+    background: var(--panel); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border); box-shadow: 0 1px 6px var(--shadow);
   }
-  #topbar .title { color: var(--accent); font-weight: 600; letter-spacing: 2px; }
-  #topbar .sep   { color: var(--border); }
-  #topbar .meta  { color: var(--muted); }
-  #topbar .meta span { color: var(--text); }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 0 1 auto; }
+  /* logo/CZU_logo_cerna.png is 999 x 696 px with wide transparent margins; the
+     mark itself is 569 x 277 px at offset (208, 210). The wrapper shows only
+     the mark: image height = 696/277, left = -208/569, top = -210/277. */
+  .brand-logo {
+    position: relative; overflow: hidden; display: block; flex-shrink: 0;
+    height: 30px; aspect-ratio: 569 / 277;
+  }
+  .brand-logo img {
+    position: absolute; height: 251.26%; width: auto; max-width: none;
+    left: -36.56%; top: -75.81%;
+  }
+  .brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+  .brand-title { font-size: 17px; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; }
+  .brand-sub {
+    font-size: 11.5px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .top-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
 
   /* Dataset switcher */
   .dataset-select {
-    background: var(--solid);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    color: var(--text);
-    cursor: pointer;
-    outline: none;
+    height: 36px; min-width: 0; max-width: 100%;
+    -webkit-appearance: none; appearance: none;
+    background: var(--solid) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%235b6672' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 11px center;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 0 32px 0 12px;
+    font-size: 14px; font-weight: 500; color: var(--text);
+    cursor: pointer; outline: none;
   }
   .dataset-select:hover { border-color: var(--accent); }
-  .dataset-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px #0969da20; }
+  .dataset-select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .dataset-select:disabled { opacity: 0.5; cursor: not-allowed; }
   .dataset-select option[disabled] { color: var(--muted); }
 
-  /* Data-source credit: link in the top bar + panel (js/credits.js) */
-  .credit-link {
-    background: none; border: none; padding: 0; cursor: pointer;
-    font-family: 'IBM Plex Mono', monospace; font-size: inherit;
-    color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+  /* Variable switch (segmented control) */
+  #layers {
+    display: none; align-items: stretch; flex-shrink: 0;
+    height: 36px; padding: 2px; gap: 2px;
+    background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
   }
-  .credit-link:hover { color: var(--text); }
+  .lbtn {
+    border: none; background: none; border-radius: 6px;
+    padding: 0 13px; color: var(--muted);
+    font-size: 13px; font-weight: 500; white-space: nowrap;
+    cursor: pointer; transition: background 0.15s, color 0.15s;
+    display: flex; align-items: center;
+  }
+  .lbtn:hover { color: var(--text); }
+  .lbtn.active { background: var(--accent); color: #fff; }
+  .lbtn .short { display: none; }
+
+  /* Data-source chip in the header (js/credits.js) */
+  .credit-chip {
+    height: 36px; flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0 12px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--accent); white-space: nowrap;
+  }
+  .credit-chip::before {
+    content: 'i'; flex-shrink: 0;
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid currentColor;
+    font: 600 11px/13px Georgia, 'Times New Roman', serif; text-align: center;
+  }
+  .credit-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+  /* ── About / data sources panel ─────────────────────────────────────── */
   #credits {
-    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    position: fixed; top: calc(var(--top-h) + 12px); left: 50%; transform: translateX(-50%);
     z-index: 10001; display: none;
-    width: min(680px, calc(100vw - 28px)); max-height: calc(100vh - 100px); overflow-y: auto;
-    background: var(--solid); border: 1px solid var(--border); border-radius: 10px;
-    padding: 18px 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.18);
-    font-size: 13px; line-height: 1.45;
+    width: min(700px, calc(100vw - 28px)); max-height: calc(100vh - var(--top-h) - 40px); overflow-y: auto;
+    background: var(--solid); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px 22px; box-shadow: 0 12px 40px rgba(16,24,40,0.22);
+    scrollbar-width: thin;
+    font-size: 13.5px; line-height: 1.5;
   }
-  #credits .cr-title {
-    font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600;
-    letter-spacing: 1.5px; color: var(--accent); margin-bottom: 10px;
-  }
-  #credits .cr-intro { color: var(--muted); margin-bottom: 12px; }
+  #credits .cr-title { font-size: 15px; font-weight: 600; margin: 4px 44px 8px 0; }
+  #credits .cr-intro { color: var(--muted); margin-bottom: 16px; }
   #credits .cr-item { border-top: 1px solid var(--border); padding: 10px 0; }
   #credits .cr-name { font-weight: 600; }
   #credits .cr-prod { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
   #credits .cr-text { margin-top: 2px; }
   #credits a { color: var(--accent); }
   #credits .cr-close {
-    position: absolute; top: 10px; right: 12px; background: none; border: none;
-    font-size: 16px; cursor: pointer; color: var(--muted);
+    position: absolute; top: 12px; right: 12px;
+    width: 34px; height: 34px;
+    background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; cursor: pointer; color: var(--muted);
   }
+  #credits .cr-close:hover { color: var(--text); border-color: var(--accent); }
+  #credits .cr-logos {
+    border-top: 1px solid var(--border); padding-top: 14px; margin-top: 2px;
+    display: flex; align-items: center; gap: 22px;
+  }
+  #credits .cr-logos .brand-logo { height: 40px; }
+  #credits .cr-logos .kv-logo { width: 96px; }
 
-  #layers {
-    position: fixed; top: 14px; left: 14px;
-    z-index: 1000; display: none; flex-direction: column; gap: 8px;
-  }
-  .lbtn {
-    background: var(--panel); backdrop-filter: blur(12px);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 9px 14px; color: var(--muted);
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 1px;
-    cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 8px;
-    box-shadow: 0 1px 3px var(--shadow);
-  }
-  .lbtn:hover { border-color: var(--accent); color: var(--text); }
-  .lbtn.active { border-color: var(--accent); background: #0969da10; color: var(--accent); }
-  .lbtn .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-
+  /* ── Bottom panel ───────────────────────────────────────────────────── */
   #controls {
-    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-    z-index: 1000; background: var(--panel); backdrop-filter: blur(16px);
-    border: 1px solid var(--border); border-radius: 12px; padding: 16px 24px;
-    width: min(820px, calc(100vw - 28px)); display: none; flex-direction: column; gap: 12px;
-    box-shadow: 0 2px 8px var(--shadow);
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 1000; width: min(880px, calc(100vw - 28px));
+    display: none; flex-direction: column; gap: 10px;
+    background: var(--panel); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    border: 1px solid var(--border); border-radius: 14px; padding: 14px 20px 10px;
+    box-shadow: 0 6px 24px var(--shadow);
   }
-  .ctrl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .ctrl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .time-block { min-width: 0; }
   .time-big {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 20px; font-weight: 600; letter-spacing: 0.5px;
-    white-space: nowrap;
+    font-size: 20px; font-weight: 600; letter-spacing: 0.1px;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  .time-sub {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px; color: var(--muted); margin-top: 4px; letter-spacing: 0.3px;
-  }
-  .btn-group { display: flex; gap: 6px; align-items: center; }
+  .time-sub { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+  .btn-group { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
   .cbtn {
-    background: var(--solid); border: 1px solid var(--border); border-radius: 6px;
-    color: var(--text); width: 32px; height: 32px; cursor: pointer; font-size: 13px;
-    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+    height: 34px; min-width: 46px; padding: 0 8px;
+    background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    display: flex; align-items: center; justify-content: center;
   }
-  .cbtn:hover { background: #f3f4f6; border-color: var(--accent); }
+  .cbtn:hover { border-color: var(--accent); background: #f6f8fa; }
   .cbtn.play {
-    width: 40px; height: 40px; font-size: 15px;
-    background: var(--accent); border-color: var(--accent); color: #fff; border-radius: 8px;
+    width: 44px; min-width: 44px; height: 44px; padding: 0; border-radius: 50%;
+    background: var(--accent); border-color: var(--accent); color: #fff;
   }
-  .cbtn.play:hover { background: #0860ca; }
-  .spd {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px; color: var(--text); font-weight: 600;
-    min-width: 28px; text-align: center;
-  }
+  .cbtn.play:hover { background: #0a54ab; }
+  .cbtn.play .ic-pause { display: none; }
+  .cbtn.play.playing .ic-play  { display: none; }
+  .cbtn.play.playing .ic-pause { display: block; }
+  .cbtn.spd { color: var(--accent); font-weight: 600; margin-left: 6px; }
 
+  .slider-wrap { padding: 0 2px; }
   input[type=range] {
-    width: 100%; -webkit-appearance: none; appearance: none;
-    height: 4px; border-radius: 2px; background: var(--border); outline: none; cursor: pointer;
+    --p: 0%;
+    display: block; width: 100%; -webkit-appearance: none; appearance: none;
+    height: 6px; border-radius: 3px; outline: none; cursor: pointer;
+    background: linear-gradient(to right, var(--accent) var(--p), var(--border) var(--p));
   }
   input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
-    background: var(--accent); cursor: pointer; box-shadow: 0 0 4px #0969da55;
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--solid); border: 3px solid var(--accent); cursor: pointer;
+    box-shadow: 0 1px 4px rgba(16,24,40,0.25);
   }
-  .ticks { position: relative; height: 24px; margin-top: 6px; }
+  input[type=range]::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--solid); border: 3px solid var(--accent); cursor: pointer;
+  }
+  .ticks { position: relative; height: 22px; margin-top: 6px; }
   .day-tick { position: absolute; height: 100%; width: 0; }
   .day-line {
     position: absolute; top: 0; left: 0;
-    width: 1px; height: 7px; background: rgba(0,0,0,0.35);
+    width: 1px; height: 6px; background: rgba(0,0,0,0.3);
   }
   .day-label {
-    position: absolute; top: 9px; left: 0;
+    position: absolute; top: 8px; left: 0;
     transform: translateX(-50%);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px; color: var(--muted);
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
     white-space: nowrap;
   }
   .day-tick.first .day-label { transform: translateX(0); }
   .day-tick.last  .day-label { transform: translateX(-100%); }
 
-  #legend {
-    position: fixed; bottom: 130px; right: 14px; z-index: 1000;
-    background: var(--panel); backdrop-filter: blur(12px);
-    border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 160px;
-    display: none; box-shadow: 0 2px 6px var(--shadow);
-  }
-  .leg-title {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 8px;
-  }
-  .leg-bar   { height: 12px; border-radius: 3px; margin-bottom: 5px; }
+  /* Legend across the panel; the run info shares the line of its title. */
+  .panel-foot { position: relative; }
+  #legend { display: none; }
+  .leg-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+  .leg-bar   { height: 10px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.10); }
   .leg-labs  {
-    display: flex; justify-content: space-between;
-    font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--muted);
+    position: relative; height: 16px; margin-top: 3px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
   }
-  
-  /* Logo nad legendou - vpravo dole (KV nahoře, CZU dole) */
-#logo-container {
-  position: fixed !important;
-  bottom: 205px !important;
-  right: 14px !important;
-  left: auto !important;
-  top: auto !important;
-  z-index: 10000 !important;
-  opacity: 0.7;
-  transition: opacity 0.3s;
-  pointer-events: none;
-  margin: 0 !important;
-  padding: 0 !important;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-#logo-container:hover {
-  opacity: 1;
-}
-.czu-logo {
-  width: 120px !important;
-  height: auto !important;
-  display: block;
-  max-width: 120px !important;
-}
-.kv-logo {
-  width: 120px !important;
-  height: auto !important;
-  display: block;
-  max-width: 120px !important;
-  opacity: 0.9;
-}
+  .leg-labs span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .leg-labs span.first { transform: none; }
+  .leg-labs span.last  { transform: translateX(-100%); }
+  .runinfo { position: absolute; top: 0; right: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .runinfo span span { color: var(--text); }
 
-/* Skrytí izobar v legendě */
-  .leg-iso {
-    display: none !important;
+  /* Always-visible credit of the driver on the map (required by the licences). */
+  .credit-line {
+    border-top: 1px solid var(--border); padding-top: 8px;
+    font-size: 12.5px; line-height: 1.45; color: var(--muted);
   }
-
-  .leg-iso-line {
-    flex-shrink: 0; width: 28px; height: 1px;
-    background: rgba(0,0,0,0.5); position: relative;
+  .credit-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-size: inherit; font-weight: 500;
+    color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
   }
+  .credit-link:hover { color: var(--text); }
 
+  /* Project logo on the map: wide screens only (it is also in the About panel). */
+  #logo-container {
+    position: fixed; left: 18px; bottom: 18px; z-index: 900;
+    display: none; pointer-events: none; opacity: 0.9;
+  }
+  /* The file has an opaque white background: frame it like the panels. */
+  .kv-logo { width: 120px; height: auto; display: block; border-radius: 10px; border: 1px solid var(--border); }
+  @media (min-width: 1240px) { #logo-container { display: block; } }
+  /* Below this width the panel reaches the corners: the map attribution line
+     would end up under it. Esri is credited in the panel's credit line. */
+  @media (max-width: 1239px) { .leaflet-control-attribution { display: none; } }
+
+  /* ── Value tooltip ──────────────────────────────────────────────────── */
   #tip {
     position: fixed; z-index: 2000; pointer-events: none; display: none;
     background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
-    padding: 9px 13px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.9;
+    padding: 9px 13px; font-family: var(--mono); font-size: 12px; line-height: 1.9;
     box-shadow: 0 2px 8px var(--shadow);
   }
   .tr   { display: flex; justify-content: space-between; gap: 14px; }
@@ -291,51 +319,68 @@
     box-shadow: none;
   }
 
-  /* ★ MOBILNÍ RESPONZIVITA */
-  @media (max-width: 768px) {
-    /* The bottom control bar covers the map's attribution line on phones and
-       a long line leaks out around it. The same credits (data providers and
-       map tiles) are in the DATA panel, opened from the top bar. */
-    .leaflet-control-attribution { display: none; }
-    #topbar {
-      top: 8px; left: 8px; right: 8px;
-      transform: none; padding: 8px 12px;
-      font-size: 10px; gap: 8px;
-      flex-wrap: wrap; white-space: normal;
-      justify-content: center;
-    }
-    #topbar .title { font-size: 11px; letter-spacing: 1px; }
-    #topbar .sep   { display: none; }
-    #topbar .meta  { font-size: 10px; }
+  /* ── Tablets: drop the long subtitle ────────────────────────────────── */
+  @media (max-width: 1100px) {
+    .brand-sub { display: none; }
+  }
 
-    #layers {
-      top: auto; bottom: 175px; left: 8px;
-      flex-direction: row; flex-wrap: wrap; gap: 6px;
+  /* ── Phones ─────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    #topbar {
+      flex-wrap: wrap; gap: 8px; min-height: 0;
+      padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
     }
-    .lbtn { padding: 7px 10px; font-size: 10px; }
+    .brand { flex: 1 1 0; gap: 9px; order: 1; }
+    .brand-logo { height: 24px; }
+    .brand-title { font-size: 16px; }
+    .credit-chip { order: 2; height: 34px; padding: 0 10px; font-size: 12.5px; }
+    .top-tools { order: 3; flex: 1 1 100%; margin-left: 0; gap: 8px; }
+    /* 16 px keeps iOS Safari from zooming the page when the select opens. */
+    .dataset-select { flex: 1 1 0; height: 40px; font-size: 16px; }
+    #layers { height: 40px; }
+    .lbtn { padding: 0 11px; font-size: 13.5px; }
+    .lbtn .long  { display: none; }
+    .lbtn .short { display: inline; }
+
+    #moreprog { top: calc(112px + env(safe-area-inset-top)); }
+    .leaflet-control-zoom { display: none; }
+
+    #credits {
+      inset: 0; top: 0; left: 0; transform: none;
+      width: auto; max-height: none; border: none; border-radius: 0;
+      padding: calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+      font-size: 14px;
+    }
+    #credits .cr-close { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 12px; }
 
     #controls {
-      bottom: 8px; left: 8px; right: 8px;
-      transform: none; width: auto;
-      padding: 10px 12px; gap: 8px;
+      left: 0; right: 0; bottom: 0; transform: none; width: auto;
+      border-radius: 16px 16px 0 0; border-left: none; border-right: none; border-bottom: none;
+      padding: 10px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px;
+      box-shadow: 0 -4px 20px var(--shadow);
     }
-    .ctrl-row { flex-wrap: wrap; gap: 8px; justify-content: center; }
-    .time-big { font-size: 13px; }
-    .time-sub { font-size: 10px; }
-    .cbtn { width: 28px; height: 28px; font-size: 12px; }
-    .cbtn.play { width: 34px; height: 34px; font-size: 13px; }
+    .ctrl-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .time-big { font-size: 17px; }
+    .time-sub { font-size: 11px; margin-top: 1px; }
+    .btn-group { gap: 6px; }
+    .cbtn { flex: 1 1 0; min-width: 0; height: 40px; font-size: 13px; }
+    .cbtn.play { flex: 0 0 46px; width: 46px; height: 46px; }
+    .cbtn.spd { margin-left: 0; }
 
-    #legend {
-      bottom: 160px; right: 8px;
-      padding: 8px; min-width: 130px;
-    }
-    .leg-title { font-size: 10px; }
-    .leg-labs  { font-size: 9px; }
-    .leg-iso   { font-size: 9px; }
+    input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
+    input[type=range]::-moz-range-thumb { width: 18px; height: 18px; }
+    .ticks { height: 20px; }
+    .day-label { font-size: 10.5px; }
+
+    .runinfo { top: 1px; font-size: 10.5px; }
+    .runinfo .opt { display: none; }
+    .leg-title { font-size: 12px; }
+    .leg-labs { font-size: 10.5px; height: 15px; }
+    .credit-line { font-size: 11px; padding-top: 6px; }
 
     #tip {
       max-width: calc(100vw - 32px);
-      font-size: 10px; padding: 7px 10px;
+      font-size: 11px; padding: 7px 10px;
     }
     .tr { gap: 8px; }
   }

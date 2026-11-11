@@ -7,13 +7,14 @@
 //    ECCC   eccc-msc.github.io/open-data/licence/readme_en/ (Data Server End-use Licence)
 //    NOAA   weather.gov/disclaimer                          (public domain)
 //  Keyed by the `model` field of a dataset in manifest.json. A model without
-//  an entry shows a plain "DATA: <model>" line.
+//  an entry shows a plain "Data: <model>" line.
 //  Loaded before app.js; updateCredits() is called from initApp() (map.js),
 //  i.e. after every dataset switch.
 // ══════════════════════════════════════════════════════════════════════════
 const CREDITS = {
   IFS: {
     short: 'ECMWF',
+    abbr: 'ECMWF',
     provider: 'European Centre for Medium-Range Weather Forecasts (ECMWF)',
     product: 'IFS open data, 0.25°',
     statement: 'This service is based on data and products of the European Centre for Medium-Range Weather Forecasts (ECMWF).',
@@ -24,6 +25,7 @@ const CREDITS = {
   },
   ICON: {
     short: 'Deutscher Wetterdienst',
+    abbr: 'DWD',
     provider: 'Deutscher Wetterdienst (DWD)',
     product: 'ICON global',
     statement: 'Based on data from Deutscher Wetterdienst, gridded data reproduced graphically.',
@@ -33,15 +35,17 @@ const CREDITS = {
   },
   ARPEGE: {
     short: 'Météo-France',
+    abbr: 'Météo-France',
     provider: 'Météo-France',
     product: 'ARPEGE, 0.25°',
-    statement: 'Source: Météo-France. Original data: "Paquets Arpège - Résolution 0,25°"; the date of the data is the model run shown in the top bar.',
+    statement: 'Source: Météo-France. Original data: "Paquets Arpège - Résolution 0,25°"; the date of the data is the model run shown on this page.',
     source: {text: 'data.gouv.fr — Paquets Arpège 0,25°', href: 'https://www.data.gouv.fr/datasets/paquets-arpege-resolution-0-25deg'},
     licence: {text: 'Licence Ouverte / Open Licence version 2.0.',
               href: 'https://www.etalab.gouv.fr/licence-ouverte-open-licence'},
   },
   GEM: {
     short: 'Environment and Climate Change Canada',
+    abbr: 'ECCC',
     provider: 'Environment and Climate Change Canada (ECCC)',
     product: 'GDPS (GEM global), 15 km',
     statement: 'Data Source: Environment and Climate Change Canada.',
@@ -51,6 +55,7 @@ const CREDITS = {
   },
   GFS: {
     short: 'NOAA/NCEP',
+    abbr: 'NOAA',
     provider: 'NOAA / National Centers for Environmental Prediction (NCEP)',
     product: 'GFS, 0.25°',
     statement: 'Data: NOAA/NCEP Global Forecast System (GFS).',
@@ -65,10 +70,10 @@ function creditFor(model){
   return CREDITS[model] || null;
 }
 
-// Short always-visible credit of the driver that is on the map right now.
+// Text of the header chip: the provider of the driver that is on the map.
 function creditLineText(model){
   const c = creditFor(model);
-  return 'DATA: ' + (c ? c.short : (model || '—'));
+  return 'Data: ' + (c ? c.abbr : (model || '—'));
 }
 
 function _esc(s){
@@ -81,7 +86,7 @@ function _creditHtml(model){
   h += '<div class="cr-prod">' + _esc(c.product) + '</div>';
   h += '<div class="cr-text">' + _esc(c.statement) + '</div>';
   h += '<div class="cr-text">Source: <a href="' + c.source.href + '" target="_blank" rel="noopener">' + _esc(c.source.text) + '</a></div>';
-  h += '<div class="cr-text">Licence: <a href="' + c.licence.href + '" target="_blank" rel="noopener">' + _esc(c.licence.text) + '</a></div>';
+  h += '<div class="cr-text">Licence: <a href="' + c.licence.href + '" target="_blank" rel="noopener">' + _esc(c.licence.text.replace(/\.$/, '')) + '</a>.</div>';
   if(c.disclaimer) h += '<div class="cr-text">Disclaimer: ' + _esc(c.disclaimer) + '</div>';
   return h + '</div>';
 }
@@ -100,15 +105,15 @@ function toggleCredits(show){
 }
 
 // Called by initApp() after the map exists (i.e. after every dataset switch).
+// Fills the header chip and the always-visible credit line in the bottom panel
+// with the provider's required statement.
 function updateCredits(){
   const model = (typeof currentDataset !== 'undefined' && currentDataset) ? currentDataset.model : null;
   const link = document.getElementById('m-src');
   if(link) link.textContent = creditLineText(model);
   const c = creditFor(model);
-  if(typeof map !== 'undefined' && map && map.attributionControl && c){
-    map.attributionControl.setPrefix(_esc(c.statement) + ' <a href="' + c.licence.href +
-      '" target="_blank" rel="noopener">Licence</a>');
-  }
+  const line = document.getElementById('credit-text');
+  if(line) line.textContent = c ? c.statement : ('Data: ' + (model || '—') + '.');
 }
 
 document.addEventListener('DOMContentLoaded', buildCreditsPanel);

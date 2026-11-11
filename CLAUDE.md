@@ -50,7 +50,18 @@ rclone sync --progress \
 
 ## Data-source credits (licence requirement)
 
-`js/credits.js` holds the attribution each data provider's licence requires, keyed by the dataset's `model` in `manifest.json` (GFS, ARPEGE, ICON, GEM, IFS). The wording was copied from the providers' licence pages on 2026-11-10 (URLs in the file header); do not reword it. Three places show it: the `DATA: <provider>` link at the end of the top bar (`#m-src`), the panel it opens (`#credits`, all providers + base map), and the Leaflet attribution line of the driver currently on the map (hidden on phones, where the control bar covers it). `updateCredits()` runs from `initApp()` after every dataset switch. A new driver needs a new `CREDITS` entry before its data go public; ECMWF (IFS) in particular requires the sentence "This service is based on data and products of the European Centre for Medium-Range Weather Forecasts (ECMWF)", the source, the CC BY 4.0 statement and the disclaimer.
+`js/credits.js` holds the attribution each data provider's licence requires, keyed by the dataset's `model` in `manifest.json` (GFS, ARPEGE, ICON, GEM, IFS). The wording was copied from the providers' licence pages on 2026-11-10 (URLs in the file header); do not reword it. Three places show it: the `Data: <provider>` chip in the header (`#m-src`), the About panel it opens (`#credits`, all providers + base map + logos), and the always-visible credit line at the bottom of the control panel (`#credit-text`, the provider's full statement for the driver on the map, on phones too). The Leaflet attribution line carries only the Esri tile credit and is hidden below 1240 px, where the panel would cover it (Esri is in the credit line). `updateCredits()` runs from `initApp()` after every dataset switch. A new driver needs a new `CREDITS` entry before its data go public; ECMWF (IFS) in particular requires the sentence "This service is based on data and products of the European Centre for Medium-Range Weather Forecasts (ECMWF)", the source, the CC BY 4.0 statement and the disclaimer.
+
+## Layout (redesign 2026-11-11)
+
+- **Header `#topbar`** (full width): logo + title, dataset select, variable switch `#layers` (segmented, short labels on phones), credit chip. Two rows on phones (≤ 768 px).
+- **Bottom panel `#controls`**: local time (Europe/Prague, CET/CEST by date) with a UTC / lead / step sub-line, playback buttons, slider, legend `#legend` (labels at their true positions), run info, credit line. Floating card on desktop, full-width sheet on phones.
+- **Map fit**: `initApp()` measures the header and the panel and passes them to `fitBounds` as padding (`zoomSnap: 0.1`), so the domain fills the free area on any screen.
+- **Dataset switch keeps the valid time**: `autoLoadFromManifest()` remembers the time on screen and jumps to the first step at or after it once it has loaded.
+- **Lead time** is counted from `metadata.run_time`, not from the step index (the first step on the web is not always the run time).
+- **Tap on a phone** shows the value tooltip (`map.on('click', onHover)`).
+- **Stale-page guard** (inline script in `index.html`): the server sends no `Cache-Control`, so the page asks for its own `Last-Modified` and reloads once when the copy in the browser is older. The server's `.htaccess` is not ours to edit.
+- Every script the redesign touched has a `?v=` cache-buster; bump it whenever the file changes.
 
 ## Data flow & file format
 
@@ -89,7 +100,7 @@ js/
   datasets.js         ← initDatasetSwitcher, updateDatasetSwitcher (45)
   layers.js           ← initBoundaryLayer, initLogoOverlay, toggleBoundary (hranice ČR + logo) (85)
   map.js              ← initApp, getGridBounds, render (+ mrtvé marchingSquares/smooth/renderIsolinesSVG) (210+)
-  controls.js         ← setStep, toCEST, go, togglePlay, cycleSpeed, setVar, updateLegend, buildTicks, updateSliderMax (140+)
+  controls.js         ← setStep, pragueTime, subText, leadHours, fmtRun, sliderFill, go, togglePlay, cycleSpeed, setVar, updateLegend, buildTicks, updateSliderMax
   tooltip.js          ← onHover (60)
   app.js              ← keyboard listener (15)
 ```
@@ -139,7 +150,7 @@ Zpětná kompatibilita: starý manifest bez `datasets` pole se automaticky obal�
 
 ### Grafické vrstvy (nově 2026-08-18)
 - **Hranice ČR**: Černá čárkovaná čára přes území ČR pro lepší orientaci na mapě. Vykresleno pomocí L.polyline s manuálně definovanými souřadnicemi hranic.
-- **Logo CZU**: Logo univerzity v pravém dolním rohu nad legendou (poloha: bottom: 150px, right: 14px). Průhledné (opacity: 0.85), zvětší se při hoveru.
+- **Loga**: ČZU v hlavičce (`.brand-logo`, CSS ořez průhledných okrajů souboru `logo/CZU_logo_cerna.png`), Chytrá krajina 2030+ v levém dolním rohu mapy jen od šířky 1240 px (`#logo-container`); obě jsou i na konci panelu About.
 - **Pixel alignment**: `getGridBounds()` nyní správně počítá bounds z úhlových bodů gridu (BL, BR, TL, TR) pro přesné zarovnání vizualizace s mapou.
 
 ### Natočená WRF síť vs. čistě lat/lon originály — proč okraje sedí hůř než střed (2026-08-20)
