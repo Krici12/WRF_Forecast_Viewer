@@ -1,13 +1,56 @@
 // ══════════════════════════════════════════════════════════════════════════
 //  MAP — inicializace mapy a rendering rastru
-//  Načítá se PŘED hlavním <script> blokem v index.html (za js/data.js).
-//  Obsahuje: initApp, getGridBounds, render (+ mrtvé izobarové pomocné funkce
-//  marchingSquares/smooth/renderIsolinesSVG, které tu zůstávají jen pro úplnost).
+//  Načítá se PŘED hlavním <script> blokem v index.html (za js/geo.js).
+//  Obsahuje: initApp, gridGeomFor, initSmoothZoom, render (+ mrtvé izobarové
+//  pomocné funkce marchingSquares/smooth/renderIsolinesSVG, které tu zůstávají
+//  jen pro úplnost).
 //  Odkazuje na globály z hlavního bloku (metadata, gridData, allTimesteps, step,
-//  varName, offCanvas, imgOv, map, isoSvg) a volá buildTicks/setStep/updateLegend/
-//  onHover (hlavní blok) a getColor (colors.js) — vše až za běhu.
-//  initApp() volá js/data.js po načtení dat.
+//  varName, offCanvas, imgOv, map, isoSvg) a volá buildTicks/setStep/updateLegend
+//  (controls.js), onHover/onMapClick/restorePin (tooltip.js), makeLocator/
+//  buildWarp (geo.js) a makeShader (colors.js) — vše až za běhu.
+//  initApp() volá js/data.js po načtení gridu.
 // ══════════════════════════════════════════════════════════════════════════
+
+// Geometry of the grid on the map (js/geo.js): locator, overlay bounds and the
+// pixel lookup table. Set by initApp() for the dataset on screen.
+let geom = null;
+let smoothZoomOff = null;      // removes the wheel listeners of the previous map
+let firstFitDone = false;
+
+// A grid wider than the WRF domain (a driver that is not cropped by the
+// pipeline) is cut to this box, so the map never shows a whole continent.
+const CROP_BOX = { latMin: 44.2, latMax: 55.5, lonMin: 5.4, lonMax: 24.0 };
+const OVERLAY_W = 768;         // width of the overlay canvas in pixels
+
+// Leaflet image overlay whose element is a <canvas>: render() paints straight
+// into it, no PNG encoding per frame.
+const CanvasOverlay = L.ImageOverlay.extend({
+  _initImage: function(){
+    const el = this._image = this._url;
+    L.DomUtil.addClass(el, 'leaflet-image-layer');
+    if(this._zoomAnimated) L.DomUtil.addClass(el, 'leaflet-zoom-animated');
+    el.onselectstart = L.Util.falseFn;
+    el.onmousemove = L.Util.falseFn;
+  }
+});
+
+// Geometry is computed once per grid object and remembered (all WRF datasets
+// share one grid object, see data.js).
+const _geomCache = new WeakMap();
+function gridGeomFor(g, nx, ny){
+  let gm = _geomCache.get(g);
+  if(gm && gm.nx === nx && gm.ny === ny) return gm;
+  const loc = makeLocator(g, nx, ny);
+  const b = loc.bounds();
+  const bounds = [
+    [Math.max(b[0][0], CROP_BOX.latMin), Math.max(b[0][1], CROP_BOX.lonMin)],
+    [Math.min(b[1][0], CROP_BOX.latMax), Math.min(b[1][1], CROP_BOX.lonMax)],
+  ];
+  gm = {nx: nx, ny: ny, loc: loc, bounds: bounds, warp: buildWarp(loc, nx, ny, bounds, OVERLAY_W)};
+  _geomCache.set(g, gm);
+  return gm;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════════════
@@ -20,8 +63,12 @@ function initApp(){
 
   // Re-init protection: initApp() is re-run whenever the user switches dataset.
   // Leaflet refuses to init a second map on the same container, so destroy the
-  // previous map (and its event listeners) before building a new one.
+  // previous map (and its event listeners) before building a new one. The view
+  // is kept: all datasets cover the same area.
+  let keepView=null;
   if(map){
+    keepView={c:map.getCenter(),z:map.getZoom()};
+    if(smoothZoomOff){smoothZoomOff();smoothZoomOff=null;}
     map.off();
     map.remove();
     map=null;
@@ -42,7 +89,9 @@ function initApp(){
 
   // zoomSnap 0.1: fitBounds can fill the free area between the header and
   // the bottom panel instead of dropping to the next whole zoom level.
-  map=L.map('map',{center:[49.8,14.5],zoom:7,zoomControl:false,zoomSnap:0.1});
+  // Leaflet's own wheel zoom is off: initSmoothZoom() replaces it.
+  map=L.map('map',{center:[49.8,14.5],zoom:7,zoomControl:false,zoomSnap:0.1,
+                   minZoom:3,maxZoom:13,scrollWheelZoom:false});
 
   // --- Samotný podklad: jeden, jednoduchý, bez filtru -------------------------
   // Esri "World Light Gray Canvas" — neutrální šedo-bílý podklad, který záměrně
@@ -52,19 +101,17 @@ function initApp(){
     attribution:'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
   }).addTo(map);
   L.control.zoom({position:'topright'}).addTo(map);
+  smoothZoomOff=initSmoothZoom(map);
   // Data-source attribution of the driver on the map (js/credits.js).
   if(typeof updateCredits==='function')updateCredits();
 
-  // Spočítat ořez na doménu WRF (pro hrubé "original" griddy).
-  computeCrop();
-
+  // Where the grid lies on the map, and the canvas the forecast is painted on.
+  geom=gridGeomFor(gridData,m.nx,m.ny);
   offCanvas=document.createElement('canvas');
-  const dims=cropDims();
-  offCanvas.width=dims.nx;
-  offCanvas.height=dims.ny;
-
-  const bounds=getGridBounds();
-  imgOv=L.imageOverlay('',bounds,{opacity:0.65,interactive:false});
+  offCanvas.width=geom.warp.W;
+  offCanvas.height=geom.warp.H;
+  const bounds=geom.bounds;
+  imgOv=new CanvasOverlay(offCanvas,bounds,{opacity:0.65,interactive:false});
   imgOv.addTo(map);
 
   isoSvg=L.svg({pane:'overlayPane'}).addTo(map);
@@ -73,12 +120,18 @@ function initApp(){
   g.setAttribute('class','isobar-layer');
   svgEl.appendChild(g);
 
-  // Fit the domain into the part of the map that the header and the bottom
-  // panel leave free (both are already visible and filled at this point).
+  // First load: fit the domain into the part of the map that the header and
+  // the bottom panel leave free (both are already visible and filled at this
+  // point). After a dataset switch: stay where the user was.
   updateLegend();
-  const topH=document.getElementById('topbar').getBoundingClientRect().bottom;
-  const botH=window.innerHeight-document.getElementById('controls').getBoundingClientRect().top;
-  map.fitBounds(bounds,{paddingTopLeft:[6,topH+6],paddingBottomRight:[6,botH+6]});
+  if(keepView&&firstFitDone){
+    map.setView(keepView.c,keepView.z,{animate:false});
+  }else{
+    const topH=document.getElementById('topbar').getBoundingClientRect().bottom;
+    const botH=window.innerHeight-document.getElementById('controls').getBoundingClientRect().top;
+    map.fitBounds(bounds,{paddingTopLeft:[6,topH+6],paddingBottomRight:[6,botH+6]});
+    firstFitDone=true;
+  }
 
   // Inicializovat hranice ČR a logo
   if(typeof initBoundaryLayer === 'function'){
@@ -88,10 +141,14 @@ function initApp(){
     initLogoOverlay(map);
   }
 
+  // Value read-out (js/tooltip.js): hover follows the mouse, a click pins.
   map.on('mousemove',onHover);
-  map.on('click',onHover);   // tap on a phone
-  map.on('mouseout movestart',()=>{document.getElementById('tip').style.display='none';});
-  map.on('moveend zoomend',render);
+  map.on('click',onMapClick);
+  map.on('dblclick',onMapDblClick);
+  map.on('mouseout',hideHover);
+  map.on('move zoom moveend zoomend resize',placePinnedTip);
+  map.on('zoomanim',hidePinnedTip);
+  if(typeof restorePin==='function')restorePin();
 
   setStep(0);
   updateLegend();
@@ -102,70 +159,83 @@ function initApp(){
   }
 }
 
-// Obdélníkový (axis-aligned) rámeček domény, kterou skutečně počítá WRF na
-// jemném gridu d02 (viz data/gfs_wrf/grid.json: lat 44.55–55.18, lon 5.76–23.69).
-// Hrubé ("original") griddy pokrývají celý kontinent (lat 30–80, lon -15–60),
-// proto se ořezávají právě na tuto doménu — aby se zobrazovala stejná oblast
-// jako u jemných rastrů a mapa se neoddalovala přes celou Evropu.
-const CROP_BOX = { latMin: 44.5, latMax: 55.2, lonMin: 5.7, lonMax: 23.7 };
+// ══════════════════════════════════════════════════════════════════════════
+//  SMOOTH WHEEL / TOUCHPAD ZOOM
+//  Leaflet's wheel handler collects wheel events for 40 ms and then starts a
+//  250 ms animated jump. A touchpad sends a stream of small events, so the map
+//  jerks from jump to jump and overshoots. Here every event only moves a goal
+//  zoom; the map follows it frame by frame, and the point under the cursor
+//  stays under the cursor. A pinch on a touchpad arrives as wheel + ctrlKey
+//  (Chrome, Firefox, Edge) or as gesture events (Safari on a Mac).
+//  Returns a function that removes the listeners (the #map element outlives
+//  the Leaflet map across dataset switches).
+// ══════════════════════════════════════════════════════════════════════════
+function initSmoothZoom(map){
+  const el=map.getContainer();
+  const ctl=new AbortController();
+  let active=false,goal=0,raf=0,anchor=null,anchorLL=null,pinch0=0;
 
-// Vypočtený ořez aktuálního gridu (indexové okno + geografické bounds),
-// nebo null, když je celý grid uvnitř CROP_BOX (pak se nic neořezává).
-let crop = null;
-
-// indexové okno gridu uvnitř CROP_BOX
-function computeCrop(){
-  crop = null;
-  const g = gridData, nx = metadata.nx, ny = metadata.ny;
-  let r0 = ny, r1 = -1, c0 = nx, c1 = -1;
-  for (let r = 0; r < ny; r++) {
-    const lat = g.lat[r * nx];            // lat je v řádku (u pravidelného gridu) konstantní
-    if (lat >= CROP_BOX.latMin && lat <= CROP_BOX.latMax) { r0 = Math.min(r0, r); r1 = Math.max(r1, r); }
+  function finish(){
+    if(!active)return;
+    active=false;
+    cancelAnimationFrame(raf);
+    map._moveEnd(true);
   }
-  for (let c = 0; c < nx; c++) {
-    const lon = g.lon[c];                 // lon je ve sloupci konstantní
-    if (lon >= CROP_BOX.lonMin && lon <= CROP_BOX.lonMax) { c0 = Math.min(c0, c); c1 = Math.max(c1, c); }
+  function frame(){
+    if(!active)return;
+    if(map._animatingZoom){active=false;return;}      // Leaflet took over (+/− button)
+    const z=map.getZoom(),d=goal-z;
+    const nz=Math.abs(d)<0.004?goal:z+d*0.3;
+    const half=map.getSize().divideBy(2);
+    const c=map.unproject(map.project(anchorLL,nz).subtract(anchor.subtract(half)),nz);
+    map._move(c,nz);
+    if(nz===goal){finish();return;}
+    raf=requestAnimationFrame(frame);
   }
-  if (r1 < r0 || c1 < c0) return;         // nic v rámečku -> bez ořezu
+  function aim(e,newGoal){
+    if(!active){
+      if(map._animatingZoom)return false;
+      map._stop();
+      goal=map.getZoom();
+      active=true;
+      map._moveStart(true,false);
+      raf=requestAnimationFrame(frame);
+    }
+    anchor=map.mouseEventToContainerPoint(e);
+    anchorLL=map.containerPointToLatLng(anchor);
+    goal=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),newGoal(goal)));
+    return true;
+  }
 
-  // Bounds oříznutého okna (min/max přes rohy okna).
-  const lats = [g.lat[r0*nx+c0], g.lat[r1*nx+c0], g.lat[r0*nx+c1], g.lat[r1*nx+c1]];
-  const lons = [g.lon[r0*nx+c0], g.lon[r1*nx+c0], g.lon[r0*nx+c1], g.lon[r1*nx+c1]];
-  crop = {
-    row0: r0, row1: r1, col0: c0, col1: c1,
-    bounds: [[Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]]
-  };
-}
+  el.addEventListener('wheel',function(e){
+    e.preventDefault();
+    let dy=e.deltaY;
+    if(e.deltaMode===1)dy*=33;            // lines (Firefox mouse wheel)
+    else if(e.deltaMode===2)dy*=300;      // pages
+    if(!dy)return;
+    dy=Math.max(-240,Math.min(240,dy));
+    // One zoom level per 240 px of scrolling; a pinch sends much smaller
+    // numbers, so it gets one level per 50.
+    const perLevel=e.ctrlKey?50:240;
+    aim(e,g=>g-dy/perLevel);
+  },{passive:false,signal:ctl.signal});
 
-// Rozměry rastru, který se má vykreslit (s ořezem, pokud existuje).
-function cropDims(){
-  return crop
-    ? { nx: crop.col1 - crop.col0 + 1, ny: crop.row1 - crop.row0 + 1 }
-    : { nx: metadata.nx, ny: metadata.ny };
-}
+  // Safari on a Mac reports a touchpad pinch as gesture events. Phones and
+  // tablets also fire them, but there Leaflet's touch zoom does the work.
+  if(!navigator.maxTouchPoints){
+    el.addEventListener('gesturestart',function(e){e.preventDefault();pinch0=map.getZoom();},{signal:ctl.signal});
+    el.addEventListener('gesturechange',function(e){
+      e.preventDefault();
+      if(e.scale>0)aim(e,()=>pinch0+Math.log2(e.scale));
+    },{signal:ctl.signal});
+    el.addEventListener('gestureend',function(e){e.preventDefault();},{signal:ctl.signal});
+  }
 
-function getGridBounds(){
-  if (crop) return crop.bounds;
-  const g=gridData;
-  const nx=metadata.nx;
-  const ny=metadata.ny;
+  // A drag or a tap ends the glide at once, so it never fights the pan.
+  el.addEventListener('mousedown',finish,{capture:true,signal:ctl.signal});
+  el.addEventListener('touchstart',finish,{capture:true,passive:true,signal:ctl.signal});
 
-  // Grid je uspořádaný jako row-major: index = row * nx + col
-  // První řádek (row=0): col 0..nx-1 -> dolní levý až dolní pravý roh
-  // Poslední řádek (row=ny-1): col 0..nx-1 -> horní levý až horní pravý roh
-
-  // Využijeme úhlové body gridu pro přesné bounds
-  const bl_idx = 0;                    // bottom-left: row=0, col=0
-  const br_idx = nx - 1;               // bottom-right: row=0, col=nx-1
-  const tl_idx = (ny - 1) * nx;        // top-left: row=ny-1, col=0
-  const tr_idx = (ny - 1) * nx + nx - 1; // top-right: row=ny-1, col=nx-1
-
-  const minLat = Math.min(g.lat[bl_idx], g.lat[tl_idx]);
-  const maxLat = Math.max(g.lat[br_idx], g.lat[tr_idx]);
-  const minLon = Math.min(g.lon[bl_idx], g.lon[tl_idx]);
-  const maxLon = Math.max(g.lon[br_idx], g.lon[tr_idx]);
-
-  return [[minLat, minLon], [maxLat, maxLon]];
+  return function(){active=false;cancelAnimationFrame(raf);ctl.abort();};
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -245,52 +315,53 @@ function renderIsolinesSVG(ts){
 
 // ══════════════════════════════════════════════════════════════════════════
 //  RENDER
+//  Every pixel of the overlay canvas knows which four grid points surround it
+//  (geom.warp, js/geo.js). The value is interpolated between them and then
+//  coloured, so the picture is exact on the Mercator base map for any grid.
 // ══════════════════════════════════════════════════════════════════════════
+let _shadeTemp=null,_shadePrec=null,_frame=null,_framePx=null;
 
 function render(){
-  if(!allTimesteps.length||!offCanvas)return;
-  // Ořez: promítáme vždy plné rozměry gridu, ať je render konzistentní napříč
-  // přepínáním datasetů (metadata.nx/ny zůstávají plné rozměry).
-  const cnx=crop?crop.col1-crop.col0+1:metadata.nx;
-  const cny=crop?crop.row1-crop.row0+1:metadata.ny;
-  const srcNx=metadata.nx;
+  if(!allTimesteps.length||!offCanvas||!geom)return;
   const ts=allTimesteps[step];
-  const dat=ts[varName];
+  const dat=ts&&ts[varName];
+  if(!dat)return;
+  const isTmp=varName==='temp_c';
+  if(!_shadeTemp){_shadeTemp=makeShader(TEMP_STOPS,false);_shadePrec=makeShader(PREC_STOPS,true);}
+  const shade=isTmp?_shadeTemp:_shadePrec;
+
+  const wp=geom.warp,W=wp.W,H=wp.H,nx=wp.nx,idx=wp.idx,fu=wp.fu,fv=wp.fv,cov=wp.cov;
   const ctx=offCanvas.getContext('2d');
-  const nx=cnx,ny=cny;
-
-  if(offCanvas.width!==nx||offCanvas.height!==ny){
-    offCanvas.width=nx;offCanvas.height=ny;
+  if(!_frame||_frame.width!==W||_frame.height!==H){
+    _frame=ctx.createImageData(W,H);
+    _framePx=new Uint32Array(_frame.data.buffer);
   }
-
-  const imgData=ctx.createImageData(nx,ny);
-  const buf=imgData.data;
-
-  // Iterace v souřadnicích OŘÍZNUTÉHO rastru (nx=cnx, ny=cny).
-  // index = (row0 + rowoffset) * srcNx + (col0 + coloffset)
-  const src0=((crop?crop.row0:0)*srcNx)+(crop?crop.col0:0);
-  for(let rowoff=0;rowoff<ny;rowoff++){
-    const srcRow=crop?crop.row1-rowoff:ny-1-rowoff;   // vertikálně zrcadlit (SW->SE->NW)
-    for(let coloff=0;coloff<nx;coloff++){
-      const srcCol=crop?(crop.col0+coloff):coloff;
-      const srcIdx=srcRow*srcNx+srcCol;
-      const val=dat[srcIdx];
-      const c=getColor(val);
-      const px=(rowoff*nx+coloff)*4;
-      if(c&&c.a>0){
-        buf[px]=c.r;buf[px+1]=c.g;
-        buf[px+2]=c.b;buf[px+3]=c.a;
-      }else{
-        buf[px+3]=0;
-      }
+  const px=_framePx;
+  for(let p=0,n=W*H;p<n;p++){
+    const k=idx[p];
+    if(k<0){px[p]=0;continue;}
+    const u=fu[p],v=fv[p];
+    const v00=dat[k],v10=dat[k+1],v01=dat[k+nx],v11=dat[k+nx+1];
+    let val;
+    if(v00<=-999||v10<=-999||v01<=-999||v11<=-999){
+      // A missing neighbour: take the nearest point as it is.
+      val=v<0.5?(u<0.5?v00:v10):(u<0.5?v01:v11);
+    }else{
+      val=(1-v)*((1-u)*v00+u*v10)+v*((1-u)*v01+u*v11);
     }
+    let c=shade(val);
+    const cv=cov[p];
+    if(cv!==255&&c!==0){                       // rim of the domain: fade the alpha
+      c=((c&0x00ffffff)|(((c>>>24)*cv/255)<<24))>>>0;
+    }
+    px[p]=c;
   }
-  ctx.putImageData(imgData,0,0);
+  ctx.putImageData(_frame,0,0);
 
-  imgOv.setUrl(offCanvas.toDataURL('image/png'));
-
-  // Použít oříznuté bounds (crop.bounds) nebo plné.
-  imgOv.setBounds(crop?crop.bounds:getGridBounds());
+  // Temperature covers the whole domain, so it stays translucent to keep the
+  // base map readable; precipitation covers only where it rains and has its
+  // own alpha in PREC_STOPS.
+  imgOv.setOpacity(isTmp?0.65:0.92);
 
   renderIsolinesSVG(ts);
 }

@@ -77,7 +77,9 @@
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
     min-height: var(--top-h);
     display: none; align-items: center; gap: 14px; padding: 0 18px;
-    background: var(--panel); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    /* Solid white, not the translucent panel colour: logo/logoKV.png has an
+       opaque white background and would show as a box on anything else. */
+    background: var(--solid);
     border-bottom: 1px solid var(--border); box-shadow: 0 1px 6px var(--shadow);
   }
   .brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 0 1 auto; }
@@ -92,6 +94,10 @@
     position: absolute; height: 251.26%; width: auto; max-width: none;
     left: -36.56%; top: -75.81%;
   }
+  a.brand-logo, .brand-kv { transition: opacity 0.15s; }
+  a.brand-logo:hover, .brand-kv:hover { opacity: 0.7; }
+  .brand-kv { display: block; flex-shrink: 0; height: 44px; }
+  .brand-kv img { display: block; height: 100%; width: auto; }
   .brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
   .brand-title { font-size: 17px; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; }
   .brand-sub {
@@ -108,7 +114,7 @@
     border: 1px solid var(--border); border-radius: 8px;
     padding: 0 32px 0 12px;
     font-size: 14px; font-weight: 500; color: var(--text);
-    cursor: pointer; outline: none;
+    cursor: pointer; outline: none; text-overflow: ellipsis;
   }
   .dataset-select:hover { border-color: var(--accent); }
   .dataset-select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -135,17 +141,14 @@
   /* Data-source chip in the header (js/credits.js) */
   .credit-chip {
     height: 36px; flex-shrink: 0;
-    display: inline-flex; align-items: center; gap: 7px;
+    display: inline-flex; align-items: center; gap: 8px;
     background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0 12px; cursor: pointer;
+    padding: 0 13px 0 10px; cursor: pointer;
     font-size: 13px; font-weight: 500; color: var(--accent); white-space: nowrap;
   }
-  .credit-chip::before {
-    content: 'i'; flex-shrink: 0;
-    width: 16px; height: 16px; border-radius: 50%;
-    border: 1.5px solid currentColor;
-    font: 600 11px/13px Georgia, 'Times New Roman', serif; text-align: center;
-  }
+  /* The "i" is an SVG drawn on a 16 px grid, so it is centred by geometry,
+     not by font metrics. */
+  .credit-chip .chip-ic { display: block; flex-shrink: 0; }
   .credit-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
 
   /* ── About / data sources panel ─────────────────────────────────────── */
@@ -272,17 +275,37 @@
   }
   .credit-link:hover { color: var(--text); }
 
-  /* Project logo on the map: wide screens only (it is also in the About panel). */
-  #logo-container {
-    position: fixed; left: 18px; bottom: 18px; z-index: 900;
-    display: none; pointer-events: none; opacity: 0.9;
-  }
-  /* The file has an opaque white background: frame it like the panels. */
   .kv-logo { width: 120px; height: auto; display: block; border-radius: 10px; border: 1px solid var(--border); }
-  @media (min-width: 1240px) { #logo-container { display: block; } }
   /* Below this width the panel reaches the corners: the map attribution line
      would end up under it. Esri is credited in the panel's credit line. */
   @media (max-width: 1239px) { .leaflet-control-attribution { display: none; } }
+
+  /* ── Compact mode (controls.js setCompact) ──────────────────────────── */
+  /* The button shows on phones and in low windows (a phone held sideways),
+     and always while compact mode is on, so there is a way back. */
+  .cbtn.fold { display: none; min-width: 0; width: 40px; padding: 0; color: var(--muted); order: 3; }
+  .cbtn.fold svg { transition: transform 0.2s; }
+  @media (max-width: 768px), (max-height: 560px) { .cbtn.fold { display: flex; } }
+  .credit-short {
+    display: none; background: none; border: none; padding: 0; cursor: pointer;
+    font-size: 11px; color: var(--muted); text-align: left;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  body.compact #topbar { display: none !important; }
+  body.compact .leaflet-top.leaflet-right { margin-top: 4px; }
+  body.compact #moreprog { top: calc(12px + env(safe-area-inset-top)); }
+  body.compact #controls { gap: 6px; }
+  body.compact .ctrl-row { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 10px; }
+  body.compact .time-block { flex: 1 1 0; }
+  body.compact .time-sub,
+  body.compact .panel-foot,
+  body.compact .credit-line,
+  body.compact .btn-group .cbtn:not(.play) { display: none; }
+  body.compact .btn-group { order: -1; flex: 0 0 auto; }
+  body.compact .cbtn.play { flex: 0 0 38px; width: 38px; min-width: 38px; height: 38px; }
+  body.compact .cbtn.fold { display: flex; flex: 0 0 40px; height: 38px; }
+  body.compact .cbtn.fold svg { transform: rotate(180deg); }
+  body.compact .credit-short { display: block; }
 
   /* ── Value tooltip ──────────────────────────────────────────────────── */
   #tip {
@@ -295,6 +318,31 @@
   .tk   { color: var(--muted); }
   .tv   { color: var(--text); font-weight: 600; }
   .tsep { border-top: 1px solid var(--border); margin: 5px 0; }
+  /* Pinned point: the box takes clicks (close button) and gets a title row. */
+  #tip.pinned { pointer-events: auto; border-color: #aab4c0; box-shadow: 0 4px 16px rgba(16,24,40,0.18); }
+  .tip-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    margin: -2px -4px 4px 0; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+    font-size: 10.5px; letter-spacing: 0.8px; color: var(--muted); line-height: 1.4;
+  }
+  .tip-close {
+    width: 22px; height: 22px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    color: var(--muted); cursor: pointer;
+  }
+  .tip-close:hover { color: var(--text); border-color: var(--border); background: #f6f8fa; }
+  /* Ring on the grid point the numbers come from (js/tooltip.js drawProbe). */
+  .probe-dot {
+    border-radius: 50%; border: 2.5px solid #101418;
+    background: rgba(255,255,255,0.3);
+    box-shadow: 0 0 0 2px #fff, 0 1px 5px 2px rgba(16,24,40,0.35);
+  }
+  .probe-dot::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #101418;
+  }
+  .probe-dot.hover { opacity: 0.8; border-width: 2px; box-shadow: 0 0 0 1.5px #fff; }
 
   /* SVG isolines */
   .isobar-layer { pointer-events: none; }
@@ -332,8 +380,10 @@
     }
     .brand { flex: 1 1 0; gap: 9px; order: 1; }
     .brand-logo { height: 24px; }
-    .brand-title { font-size: 16px; }
-    .credit-chip { order: 2; height: 34px; padding: 0 10px; font-size: 12.5px; }
+    .brand-kv { height: 32px; }
+    .brand-title { font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
+    .credit-chip { order: 2; height: 34px; padding: 0 10px 0 8px; gap: 6px; font-size: 12.5px; }
+    .credit-chip .chip-pre { display: none; }     /* "Data: " — no room on a phone */
     .top-tools { order: 3; flex: 1 1 100%; margin-left: 0; gap: 8px; }
     /* 16 px keeps iOS Safari from zooming the page when the select opens. */
     .dataset-select { flex: 1 1 0; height: 40px; font-size: 16px; }
@@ -359,12 +409,19 @@
       padding: 10px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px;
       box-shadow: 0 -4px 20px var(--shadow);
     }
-    .ctrl-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .ctrl-row { flex-wrap: wrap; align-items: center; gap: 8px; }
+    .time-block { flex: 1 1 0; }
+    .cbtn.fold { flex: 0 0 40px; height: 36px; order: 0; }
+    .btn-group { flex: 1 1 100%; }
+    body.compact #controls { padding-top: 8px; }
+    body.compact .time-big { font-size: 16px; }
     .time-big { font-size: 17px; }
-    .time-sub { font-size: 11px; margin-top: 1px; }
+    .time-sub { font-size: 11px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; }
+    .time-block { min-width: 0; }
     .btn-group { gap: 6px; }
-    .cbtn { flex: 1 1 0; min-width: 0; height: 40px; font-size: 13px; }
-    .cbtn.play { flex: 0 0 46px; width: 46px; height: 46px; }
+    .btn-group .cbtn { flex: 1 1 0; min-width: 0; height: 40px; font-size: 13px; }
+    .btn-group .cbtn.play { flex: 0 0 46px; width: 46px; height: 46px; }
+    body.compact .btn-group .cbtn.play { flex: 0 0 38px; width: 38px; height: 38px; }
     .cbtn.spd { margin-left: 0; }
 
     input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
@@ -377,6 +434,16 @@
     .leg-title { font-size: 12px; }
     .leg-labs { font-size: 10.5px; height: 15px; }
     .credit-line { font-size: 11px; padding-top: 6px; }
+
+    @media (max-width: 380px) {
+      .brand-logo { height: 22px; }
+      .brand-kv { height: 28px; }
+      .brand { gap: 8px; }
+      /* Room for the longest dataset name and for the whole time sub-line. */
+      .lbtn { padding: 0 8px; }
+      .dataset-select { padding: 0 26px 0 10px; background-position: right 8px center; }
+      .time-sub { font-size: 10px; }
+    }
 
     #tip {
       max-width: calc(100vw - 32px);

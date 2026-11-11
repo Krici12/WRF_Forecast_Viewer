@@ -8,7 +8,7 @@
 <title>WRF Forecast Viewer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=7"/>
+<link rel="stylesheet" href="css/style.css?v=8"/>
 <script>
 // Stale-page guard. The server sends no Cache-Control for this file, so a
 // browser may keep showing an old copy for days after a deploy. Ask the server
@@ -52,7 +52,8 @@ window.freshCheck();
 <!-- Header: brand, dataset, variable, data-source chip. -->
 <div id="topbar">
   <div class="brand">
-    <span class="brand-logo"><img src="logo/CZU_logo_cerna.png" alt="Czech University of Life Sciences Prague"></span>
+    <a class="brand-logo" href="https://www.fzp.czu.cz/en" target="_blank" rel="noopener" title="Faculty of Environmental Sciences, Czech University of Life Sciences Prague"><img src="logo/CZU_logo_cerna.png" alt="Czech University of Life Sciences Prague"></a>
+    <a class="brand-kv" href="https://www.chytra-krajina.cz" target="_blank" rel="noopener" title="Chytrá krajina 2030+"><img src="logo/logoKV.png" alt="Chytrá krajina 2030+"></a>
     <div class="brand-text">
       <span class="brand-title">WRF Forecast</span>
       <span class="brand-sub">Faculty of Environmental Sciences · Czech University of Life Sciences Prague</span>
@@ -69,7 +70,10 @@ window.freshCheck();
       </button>
     </div>
   </div>
-  <button id="m-src" class="credit-chip" onclick="toggleCredits()" title="About, data sources and licences">Data: —</button>
+  <button class="credit-chip" onclick="toggleCredits()" title="About, data sources and licences">
+    <svg class="chip-ic" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="8" fill="currentColor"/><circle cx="8" cy="4.75" r="1.15" fill="#fff"/><rect x="7" y="7.1" width="2" height="5.2" rx="1" fill="#fff"/></svg>
+    <span id="m-src">Data: —</span>
+  </button>
 </div>
 
 <!-- About + data-source attribution required by the providers' licences (js/credits.js). -->
@@ -91,8 +95,8 @@ window.freshCheck();
     <div class="cr-text">Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics</div>
   </div>
   <div class="cr-logos">
-    <span class="brand-logo"><img src="logo/CZU_logo_cerna.png" alt="Czech University of Life Sciences Prague"></span>
-    <img class="kv-logo" src="logo/logoKV.png" alt="Chytrá krajina 2030+">
+    <a class="brand-logo" href="https://www.fzp.czu.cz/en" target="_blank" rel="noopener" title="Faculty of Environmental Sciences, Czech University of Life Sciences Prague"><img src="logo/CZU_logo_cerna.png" alt="Czech University of Life Sciences Prague"></a>
+    <a href="https://www.chytra-krajina.cz" target="_blank" rel="noopener" title="Chytrá krajina 2030+"><img class="kv-logo" src="logo/logoKV.png" alt="Chytrá krajina 2030+"></a>
   </div>
 </div>
 
@@ -103,6 +107,10 @@ window.freshCheck();
       <div class="time-big" id="t-display">—</div>
       <div class="time-sub" id="t-sub">&nbsp;</div>
     </div>
+    <!-- Phones and low windows: folds the header and most of this panel away (controls.js). -->
+    <button class="cbtn fold" id="compact-btn" onclick="toggleCompact()" aria-expanded="true" title="Hide controls, keep the time slider" aria-label="Hide controls, keep the time slider">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <div class="btn-group">
       <button class="cbtn" onclick="go(-6)" title="Back 6 hours">&minus;6h</button>
       <button class="cbtn" onclick="go(-1)" title="Back 1 hour">&minus;1h</button>
@@ -137,24 +145,22 @@ window.freshCheck();
     Base map &copy; Esri.
     <button class="credit-link" onclick="toggleCredits()">Sources and licences</button>
   </div>
-</div>
-
-<!-- Project logo, shown on wide screens only (also in the About panel). -->
-<div id="logo-container">
-  <img src="logo/logoKV.png" alt="Chytrá krajina 2030+" class="kv-logo">
+  <!-- Compact mode: the credit shrinks to one line and stays on screen. -->
+  <button class="credit-short" id="credit-short" onclick="toggleCredits()" title="About, data sources and licences"><span id="credit-short-text">Data: —</span> · Base map &copy; Esri</button>
 </div>
 
 <div id="tip"></div>
 
-<script src="js/colors.js"></script>
-<script src="js/data.js?v=2"></script>
+<script src="js/colors.js?v=2"></script>
+<script src="js/data.js?v=3"></script>
 <script src="js/datasets.js"></script>
 <script src="js/layers.js"></script>
 <script src="js/boundaries.js?v=3"></script>
-<script src="js/map.js?v=9"></script>
-<script src="js/controls.js?v=2"></script>
-<script src="js/tooltip.js?v=2"></script>
-<script src="js/credits.js?v=2"></script>
+<script src="js/geo.js?v=1"></script>
+<script src="js/map.js?v=10"></script>
+<script src="js/controls.js?v=3"></script>
+<script src="js/tooltip.js?v=3"></script>
+<script src="js/credits.js?v=3"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════════════
 //  STATE
@@ -190,14 +196,21 @@ const TEMP_STOPS = [
   {v:30,  r:255, g:0,   b:0,   a:255},
   {v:38,  r:140, g:0,   b:0,   a:255},
 ];
+// Precipitation rate [mm/h]. Under 0.1 mm/h nothing is drawn (the short ramp
+// from 0.05 only softens the edge). Then light blue > blue > green > yellow >
+// orange > red > magenta, the order usual on precipitation and radar maps, with
+// enough alpha to stand out on the grey base map already at 0.1 mm/h. The
+// legend gives every stop the same width (controls.js updateLegend).
 const PREC_STOPS = [
-  {v:0,   r:0,   g:0,   b:0,   a:0},
-  {v:0.5, r:180, g:220, b:255, a:100},
-  {v:2,   r:80,  g:160, b:255, a:150},
-  {v:5,   r:0,   g:100, b:255, a:180},
-  {v:12,  r:0,   g:0,   b:200, a:200},
-  {v:25,  r:120, g:0,   b:200, a:215},
-  {v:50,  r:220, g:0,   b:220, a:230},
+  {v:0.05, r:105, g:178, b:246, a:0},
+  {v:0.1,  r:105, g:178, b:246, a:225},
+  {v:0.5,  r:50,  g:130, b:238, a:235},
+  {v:1,    r:22,  g:85,  b:205, a:240},
+  {v:2,    r:30,  g:165, b:95,  a:240},
+  {v:5,    r:250, g:225, b:50,  a:245},
+  {v:10,   r:250, g:150, b:30,  a:250},
+  {v:20,   r:225, g:40,  b:40,  a:255},
+  {v:50,   r:185, g:35,  b:175, a:255},
 ];
 
 
@@ -212,6 +225,6 @@ function toggleIsolines(){
 
 
 </script>
-<script src="js/app.js"></script>
+<script src="js/app.js?v=2"></script>
 </body>
 </html>

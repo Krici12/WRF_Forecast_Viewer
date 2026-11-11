@@ -6,7 +6,11 @@
 //
 //  Progresivní načítání:
 //    1) manifest.json       (grid_file + files)
-//    2) grid.json           (jednou; grid už NENÍ v každém chunku)
+//    2) grid.json           (jednou; grid už NENÍ v každém chunku). Grid se drží
+//                            v paměti (loadGrid): všechny WRF datasety sdílejí
+//                            jednu síť, takže se 3 MB soubor stahuje jen jednou
+//                            za návštěvu. Táž síť je i pevná vrstva terénu
+//                            (`terrain`) pro ELEV v popisku u všech datasetů.
 //    3) chunk po chunku     — mapa zobrazena hned po gridu (initApp), timesteps
 //                            se plní na pozadí.
 //
@@ -124,6 +128,52 @@ let currentManifest = null;
 // příchodu dalších chunků zbytečně nevykreslovalo dokola).
 let initialRendered = false;
 
+// Counter of dataset loads: a load that is no longer the newest one stops
+// (the user switched dataset while chunks were still arriving).
+let loadSeq = 0;
+
+// ── Grid + fixed terrain layer ──────────────────────────────
+
+// Terrain height for the ELEV row of the value box (js/tooltip.js): the 3 km
+// WRF terrain, the same for every dataset and every run. {grid, nx, ny, loc}.
+// The driver ("original") grids carry hgt = 0 everywhere, so they cannot
+// supply it themselves.
+let terrain = null;
+let _terrainPending = false;
+const _gridCache = {};           // dataset id -> grid object, for this page visit
+
+function setTerrain(g){
+  if(terrain || !g || !g.hgt || !g.nx || !g.ny) return;
+  terrain = {grid: g, nx: g.nx, ny: g.ny, loc: makeLocator(g, g.nx, g.ny)};
+  if(typeof refreshTip === 'function') refreshTip();
+}
+
+async function loadGrid(dataset){
+  if(_gridCache[dataset.id]) return _gridCache[dataset.id];
+  // Every WRF dataset runs on the same domain (the five grid.json files are
+  // byte-identical), so a second WRF dataset with the same grid size reuses
+  // the grid that is already in memory instead of downloading 3 MB again.
+  const dg = dataset.grid || {};
+  if(dataset.stage === 'wrf' && terrain && dg.nx === terrain.nx && dg.ny === terrain.ny
+     && dg.dx_m === terrain.grid.dx_m){
+    return (_gridCache[dataset.id] = terrain.grid);
+  }
+  const g = await fetchWithRetry(buildFilePath(dataset, dataset.grid_file || 'grid.json'), 2);
+  _gridCache[dataset.id] = g;
+  if(dataset.stage === 'wrf') setTerrain(g);
+  return g;
+}
+
+// A driver dataset opened before any WRF one: fetch the terrain in the background.
+function ensureTerrain(manifest){
+  if(terrain || _terrainPending) return;
+  const d = (manifest.datasets || []).find(x => x.stage === 'wrf' && x.files && x.files.length);
+  if(!d) return;
+  _terrainPending = true;
+  loadGrid(d).catch(err => console.warn('terrain load failed:', err.message))
+             .finally(() => { _terrainPending = false; });
+}
+
 // Pomocná funkce pro skládání cesty k souboru z path_prefix
 function buildFilePath(dataset, filename) {
   if(dataset.path_prefix){
@@ -139,6 +189,7 @@ async function autoLoadFromManifest(manifest, dataset) {
   document.getElementById('prog').style.display = 'flex';
   document.getElementById('prog-label').textContent = 'LOADING GRID...';
 
+  const myLoad = ++loadSeq;
   try {
     const files = dataset.files.slice().sort();
     // Switching dataset: remember the valid time on screen so the new dataset
@@ -150,8 +201,8 @@ async function autoLoadFromManifest(manifest, dataset) {
     allTimesteps = [];
 
     // 1) Grid is its own file now (it used to be duplicated in every chunk).
-    const gridFile = dataset.grid_file || 'grid.json';
-    const g = await fetchWithRetry(buildFilePath(dataset, gridFile), 2);
+    const g = await loadGrid(dataset);
+    if(myLoad !== loadSeq) return;
     gridData = g;
 
     // Shallow metadata: build_web puts nx/ny/dx_m in grid.json; keep a
@@ -172,6 +223,7 @@ async function autoLoadFromManifest(manifest, dataset) {
       initDatasetSwitcher(manifest);
     }
     document.getElementById('prog').style.display = 'none';
+    ensureTerrain(manifest);
 
     // 3) Load chunks sequentially, appending timesteps as they arrive.
     // Map is already visible, so use the small "more" pill — not the full
@@ -184,6 +236,7 @@ async function autoLoadFromManifest(manifest, dataset) {
       more.textContent = `LOADING ${i + 1}/${files.length}…`;
 
       const chunk = await fetchWithRetry(f, 2);
+      if(myLoad !== loadSeq) return;     // a newer dataset load took over
 
       // First chunk refines the metadata (run time, domain, real nx/ny).
       if (i === 0) {
@@ -228,6 +281,7 @@ async function autoLoadFromManifest(manifest, dataset) {
 
     console.log('All chunks loaded:', allTimesteps.length, 'timesteps');
   } catch (err) {
+    if(myLoad !== loadSeq) return;       // an abandoned load may fail quietly
     console.error('Data load error:', err);
     // ALWAYS hide the overlay and surface a real error — never hang on the logo.
     showFatalError('NEPODAŘILO SE NAČÍST DATA.\n' + err.message);

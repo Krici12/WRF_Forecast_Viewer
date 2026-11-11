@@ -26,3 +26,25 @@ function getColor(v){
   if(v<=-999)return null;
   return colorAt(varName==='temp_c'?TEMP_STOPS:PREC_STOPS,v);
 }
+
+// Fast variant for the renderer: shader(v) returns the colour as one 32-bit
+// number in the byte order of a little-endian Uint32Array over ImageData
+// (A B G R), 0 for "nothing to draw". Same piecewise-linear ramp as colorAt,
+// read from a table of 4096 colours instead of being computed for each of the
+// half a million pixels of a frame. sqrtAxis spaces the table evenly in
+// sqrt(v): precipitation needs its resolution at the low end (0.05–1 mm/h).
+function makeShader(stops,sqrtAxis){
+  const N=4096,n=stops.length;
+  const f=sqrtAxis?Math.sqrt:(v=>v);
+  const a0=f(stops[0].v),a1=f(stops[n-1].v),k=(N-1)/(a1-a0);
+  const lut=new Uint32Array(N);
+  for(let i=0;i<N;i++){
+    const a=a0+i/(N-1)*(a1-a0);
+    const c=colorAt(stops,sqrtAxis?a*a:a);
+    lut[i]=c.a<=0?0:(((c.a&255)<<24)|((c.b&255)<<16)|((c.g&255)<<8)|(c.r&255))>>>0;
+  }
+  const v0=stops[0].v,v1=stops[n-1].v,lo=lut[0],hi=lut[N-1];
+  return sqrtAxis
+    ? function(v){ return v<=-999?0:v<=v0?lo:v>=v1?hi:lut[((Math.sqrt(v)-a0)*k+0.5)|0]; }
+    : function(v){ return v<=-999?0:v<=v0?lo:v>=v1?hi:lut[((v-a0)*k+0.5)|0]; };
+}

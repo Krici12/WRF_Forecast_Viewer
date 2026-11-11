@@ -8,8 +8,11 @@ usage: python3 tools/dev/check_page.py <page-url> <width> <height> <out-prefix> 
   e.g. python3 tools/dev/check_page.py http://127.0.0.1:8765/index.html 390 700 /tmp/shots/phone gem_wrf
 
 Prints the on-screen rectangles of the header, panel, legend and forecast raster
-plus the visible texts (LOADED / PRECIP / PLAY / SPEED / TIP / PANEL / SWITCH),
-JS exceptions and console errors, and writes <out-prefix>_{map,precip,tip,panel,panel2,switch}.png.
+plus the visible texts (LOADED / PRECIP / PLAY / SPEED / TIP / COMPACT / PANEL / SWITCH),
+JS exceptions and console errors, and writes <out-prefix>_{map,precip,tip,compact,panel,panel2,switch}.png.
+LOADED.reg is the registration check: the largest distance, in grid cells, between a
+grid point's true place on the screen and the grid point its overlay pixel was painted
+from (about 1 or less is right; the four-corner stretch used before 2026-11-11 gave 40+).
 Widths below 800 px are emulated as a phone at 2x.
 """
 import base64, json, os, socket, struct, sys, time, urllib.request
@@ -82,14 +85,19 @@ info = """JSON.stringify({
   logoLoaded: document.querySelector('.brand-logo img').naturalWidth,
   select: %(R)s('#dataset-switcher'), layers: %(R)s('#layers'), chip: %(R)s('#m-src'),
   controls: %(R)s('#controls'), timeBlock: %(R)s('.time-block'), btns: %(R)s('.btn-group'), legend: %(R)s('#legend'), runinfo: %(R)s('.runinfo'), credit: %(R)s('.credit-line'),
-  kv: %(R)s('#logo-container'), zoom: %(R)s('.leaflet-control-zoom'), attr: %(R)s('.leaflet-control-attribution'),
+  kv: %(R)s('.brand-kv'), zoom: %(R)s('.leaflet-control-zoom'), attr: %(R)s('.leaflet-control-attribution'),
   domain: %(R)s(imgOv.getElement()), zoomLevel: map.getZoom(),
   time: document.getElementById('t-display').textContent, tsub: document.getElementById('t-sub').textContent,
   chipText: document.getElementById('m-src').textContent, creditText: document.querySelector('.credit-line').innerText,
   run: document.querySelector('.runinfo').innerText, legTitle: document.getElementById('leg-title').textContent,
   legLabs: document.getElementById('leg-labs').innerText.replace(/\\n/g,' '),
   dataset: currentDataset && currentDataset.id, options: [...document.getElementById('dataset-switcher').options].map(o=>o.textContent),
-  steps: allTimesteps.length })""" % {"R": R}
+  steps: allTimesteps.length, terrain: !!terrain,
+  reg: (()=>{const g=gridData,nx=metadata.nx,ny=metadata.ny,wp=geom.warp,r=offCanvas.getBoundingClientRect();let worst=0;const st=Math.max(1,Math.floor(nx/29));
+    for(let j=st;j<ny-st;j+=st)for(let i=st;i<nx-st;i+=st){const k=j*nx+i,q=map.latLngToContainerPoint([g.lat[k],g.lon[k]]);
+      const t=Math.floor((q.y-r.top)/r.height*wp.H)*wp.W+Math.floor((q.x-r.left)/r.width*wp.W),kk=wp.idx[t];
+      worst=Math.max(worst,kk<0?99:Math.hypot((kk%%nx)+wp.fu[t]-i,Math.floor(kk/nx)+wp.fv[t]-j));}
+    return +worst.toFixed(2);})() })""" % {"R": R}
 print("LOADED", ev(info)); shot("map")
 ev("setVar('precip_mm'); setStep(30)"); time.sleep(1)
 print("PRECIP", ev("JSON.stringify({legTitle: document.getElementById('leg-title').textContent, legLabs: document.getElementById('leg-labs').innerText.replace(/\\n/g,' '), active: document.querySelector('.lbtn.active').id, time: document.getElementById('t-display').textContent, tsub: document.getElementById('t-sub').textContent, fill: document.getElementById('slider').style.getPropertyValue('--p')})")); shot("precip")
@@ -98,7 +106,11 @@ print("PLAY  ", ev("JSON.stringify({cls: document.getElementById('playbtn').clas
 print("SPEED ", ev("JSON.stringify({spd: document.getElementById('spd').textContent, cls: document.getElementById('playbtn').className})"))
 ev("setVar('temp_c')")
 ev("(()=>{const r=imgOv.getElement().getBoundingClientRect(); const x=r.left+r.width*0.5, y=r.top+r.height*0.5; map.fire('click',{latlng: map.containerPointToLatLng([x,y]), originalEvent:{clientX:x, clientY:y}});})()"); time.sleep(0.5)
-print("TIP   ", ev("JSON.stringify({rect: %s('#tip'), text: document.getElementById('tip').innerText.replace(/\\n/g,' ')})" % R)); shot("tip")
+print("TIP   ", ev("JSON.stringify({rect: %s('#tip'), pinned: !!pinInfo, marker: %s('.probe-dot'), text: document.getElementById('tip').innerText.replace(/\\n/g,' ')})" % (R, R))); shot("tip")
+ev("unpin()")
+ev("setCompact(true)"); time.sleep(0.5)
+print("COMPACT", ev("JSON.stringify({topbar: %s('#topbar'), controls: %s('#controls'), fold: %s('#compact-btn'), credit: document.getElementById('credit-short').innerText})" % (R, R, R))); shot("compact")
+ev("setCompact(false)")
 ev("document.getElementById('m-src').click()"); time.sleep(1)
 print("PANEL ", ev("JSON.stringify({rect: %s('#credits'), close: %s('#credits .cr-close'), items: document.querySelectorAll('#credits .cr-item').length, logos: [...document.querySelectorAll('#credits .cr-logos img')].map(i=>i.naturalWidth)})" % (R, R))); shot("panel")
 ev("document.getElementById('credits').scrollTop=99999"); time.sleep(0.5); shot("panel2")

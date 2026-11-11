@@ -13,3 +13,6 @@ document.addEventListener('keydown',e=>{
   if(e.key==='p')setVar('precip_mm');
   if(e.key==='i')toggleIsolines();
 });
+
+// Compact mode chosen on an earlier visit (phones, low windows).
+if(typeof initCompact==='function')initCompact();

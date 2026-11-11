@@ -110,11 +110,25 @@ function toggleCredits(show){
 function updateCredits(){
   const model = (typeof currentDataset !== 'undefined' && currentDataset) ? currentDataset.model : null;
   const link = document.getElementById('m-src');
-  if(link) link.textContent = creditLineText(model);
+  if(link){
+    // "Data: " sits in its own span: phones show only the provider (css .chip-pre).
+    const t = creditLineText(model);
+    link.innerHTML = '<span class="chip-pre">Data: </span>' + _esc(t.replace(/^Data: /, ''));
+  }
   const c = creditFor(model);
   const line = document.getElementById('credit-text');
   if(line) line.textContent = c ? c.statement : ('Data: ' + (model || '—') + '.');
+  // One-line credit that stays on screen in compact mode (controls.js).
+  const short = document.getElementById('credit-short-text');
+  if(short) short.textContent = creditLineText(model);
 }
 
 document.addEventListener('DOMContentLoaded', buildCreditsPanel);
-document.addEventListener('keydown', e => { if(e.key === 'Escape') toggleCredits(false); });
+// Esc closes the About panel; with the panel closed it releases the pinned
+// point on the map (js/tooltip.js).
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  const p = document.getElementById('credits');
+  if(p && p.style.display === 'block') toggleCredits(false);
+  else if(typeof unpin === 'function') unpin();
+});

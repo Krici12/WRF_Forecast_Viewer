@@ -20,6 +20,7 @@ function setStep(idx){
   document.getElementById('t-sub').textContent=subText(ts);
   sliderFill();
   render();
+  if(typeof refreshTip==='function')refreshTip();   // pinned point: new numbers
 }
 
 // Local (Prague) time of a UTC ISO string, e.g. "Wed 11 Nov · 01:00 CET".
@@ -101,27 +102,69 @@ function setVar(v){
 // ══════════════════════════════════════════════════════════════════════════
 function updateLegend(){
   const isTmp=varName==='temp_c';
-  const stops=isTmp?TEMP_STOPS:PREC_STOPS;
   const unit=isTmp?'[°C]':'[mm·h⁻¹]';
   document.getElementById('leg-title').textContent=isTmp?`2 m temperature ${unit}`:`Precipitation ${unit}`;
-  const minV=stops[0].v,maxV=stops[stops.length-1].v;
-  const grad=stops.map(s=>
-    `rgba(${s.r},${s.g},${s.b},${(s.a/255).toFixed(2)}) ${((s.v-minV)/(maxV-minV)*100).toFixed(0)}%`
-  ).join(', ');
+  const rgba=s=>`rgba(${s.r},${s.g},${s.b},${(s.a/255).toFixed(2)})`;
+  let grad,labs;   // labs: [{v, p}] with p = position on the bar in %
+  if(isTmp){
+    // Linear bar: labels sit at their true position, every 10 °C plus the upper end.
+    const stops=TEMP_STOPS,minV=stops[0].v,maxV=stops[stops.length-1].v;
+    const pos=v=>(v-minV)/(maxV-minV)*100;
+    grad=stops.map(s=>`${rgba(s)} ${pos(s.v).toFixed(1)}%`).join(', ');
+    labs=[-30,-20,-10,0,10,20,30,maxV].map(v=>({v:v,p:pos(v)}));
+  }else{
+    // Precipitation spans 0.1 to 50 mm/h, and most of what falls is under
+    // 2 mm/h: a linear bar would squeeze that into its first few percent.
+    // Every colour stop gets the same width instead (the ramp is linear
+    // between two stops, on the map as well as here). Rates below the first
+    // visible stop are not drawn on the map and are left out.
+    const stops=PREC_STOPS.filter(s=>s.a>0),n=stops.length-1;
+    grad=stops.map((s,i)=>`${rgba(s)} ${(i/n*100).toFixed(1)}%`).join(', ');
+    labs=stops.map((s,i)=>({v:s.v,p:i/n*100}));
+  }
   document.getElementById('leg-bar').style.background=`linear-gradient(to right, ${grad})`;
-  // Labels sit at their true position on the (linear) bar. Temperature: every
-  // 10 °C plus the upper end; precipitation: the colour stops. A label closer than 9 % of the bar
-  // to the previous one is skipped so they never overlap.
-  const cand=isTmp?[-30,-20,-10,0,10,20,30,maxV]:stops.map(s=>s.v);
+  // A label closer than 9 % of the bar to the previous one is skipped so they never overlap.
   let last=-99,html='';
-  cand.forEach(v=>{
-    const p=(v-minV)/(maxV-minV)*100;
-    if(p-last<9)return;
-    last=p;
-    const cls=p<3?' class="first"':(p>97?' class="last"':'');
-    html+=`<span${cls} style="left:${p.toFixed(1)}%">${v}</span>`;
+  labs.forEach(l=>{
+    if(l.p-last<9)return;
+    last=l.p;
+    const cls=l.p<3?' class="first"':(l.p>97?' class="last"':'');
+    html+=`<span${cls} style="left:${l.p.toFixed(1)}%">${l.v}</span>`;
   });
   document.getElementById('leg-labs').innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  COMPACT MODE (phones and low windows)
+//  One button folds the header and most of the bottom panel away; what stays
+//  is the time, play, the time slider and a one-line data credit. The choice
+//  is remembered in this browser.
+// ══════════════════════════════════════════════════════════════════════════
+function setCompact(on){
+  document.body.classList.toggle('compact',on);
+  const b=document.getElementById('compact-btn');
+  if(b){
+    b.setAttribute('aria-expanded',String(!on));
+    b.title=on?'Show all controls':'Hide controls, keep the time slider';
+    b.setAttribute('aria-label',b.title);
+  }
+  if(typeof placePinnedTip==='function')placePinnedTip();
+}
+function toggleCompact(){
+  const on=!document.body.classList.contains('compact');
+  setCompact(on);
+  try{localStorage.setItem('compact',on?'1':'0');}catch(e){}
+}
+// Restore the remembered choice, but only where the button exists (phones,
+// low windows): on a desktop there would be no way back. A very low window
+// (a phone held sideways) starts compact unless the user chose otherwise:
+// the full panel would leave almost no map.
+function initCompact(){
+  let saved=null;
+  try{saved=localStorage.getItem('compact');}catch(e){}
+  const b=document.getElementById('compact-btn');
+  const on=saved==='1'||(saved===null&&window.innerHeight<=480);
+  if(on&&b&&getComputedStyle(b).display!=='none')setCompact(true);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
