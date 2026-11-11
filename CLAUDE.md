@@ -17,7 +17,7 @@ python3 -m http.server 8000
 # open http://localhost:8000
 ```
 
-There's no linter or test command; verify UI changes by loading the page in a browser and checking the map renders, the time slider/playback works, and hovering the map shows the tooltip.
+There's no linter or test command; verify UI changes by loading the page in a browser and checking the map renders, the time slider/playback works, and hovering the map shows the tooltip. For a scripted check with today's live data and screenshots at phone and desktop sizes use `tools/dev/test_server.py` and `tools/dev/check_page.py` (see their headers).
 
 ## Deploying
 
@@ -62,6 +62,27 @@ rclone sync --progress \
 - **Tap on a phone** shows the value tooltip (`map.on('click', onHover)`).
 - **Stale-page guard** (inline script in `index.html`): the server sends no `Cache-Control`, so the page asks for its own `Last-Modified` and reloads once when the copy in the browser is older. The server's `.htaccess` is not ours to edit.
 - Every script the redesign touched has a `?v=` cache-buster; bump it whenever the file changes.
+
+## Work log 2026-11-10 / 11 (start here next time)
+
+Done in a session run from the `wrf-forecast` project while adding the IFS driver:
+
+1. **Data-source credits** (2026-11-10, commit `6403b94`): `js/credits.js` with the licence wording of NOAA, Météo-France, DWD, ECCC and ECMWF; the About panel; `tools/deploy_frontend.sh`.
+2. **Redesign** (2026-11-11, commit `725270b`), after the user saw the phone page and called it poor, then gave a free hand: header bar, single bottom panel, phone layout, always-visible provider statement, map fitted to the free area. Details in "Layout" above.
+3. **Bugs fixed on the way**: local time was hard-coded UTC+2 and labelled CEST all year (now real Europe/Prague time); after a dataset switch the time label stayed on the old dataset (the switch now keeps the valid time); lead time was the step index (now counted from the run).
+4. **Stale pages**: the user's phone showed a days-old copy because the server sends no `Cache-Control` for `index.html`. The cPanel `.htaccess` carries a note from university IT not to overwrite it, so it was left alone; `index.html` has a reload guard instead.
+
+State: live site = `main` = tag `frontend-live` (`725270b`). Tag `frontend-prev` (`6403b94`) is the version before the redesign: to roll back, check it out and run `bash tools/deploy_frontend.sh`. The user approved the result ("skvělé") on 2026-11-11.
+
+**How the redesign was checked** (no test runner in this repo): `tools/dev/test_server.py` serves this checkout with live data, `tools/dev/check_page.py` drives a headless Chrome, prints element rectangles and texts and saves screenshots (usage in the file headers). Screenshots go to the `image-reader` subagent, the main model cannot see them. Sizes used: 390x700, 360x640, 900x1100, 1440x900.
+
+Open items, none started, all the user's call:
+- Precipitation colours: low rates are nearly invisible on the grey base map. Changing the scale is a scientific choice.
+- The bottom panel takes about 36 % of a phone screen; the legend or the credit line could collapse.
+- On phones the About panel's close button covers the end of a text line while scrolling.
+- `Cache-Control: no-cache` for `index.html` in `.htaccess` would be the clean fix for stale pages; needs the user (or IT) to agree to touch that file.
+- The IFS datasets (`ifs_wrf`, `ifs_original`) are not on the web yet; they arrive with the production switch in `wrf-forecast` (see its `docs/IFS_PIPELINE.md`). `CREDITS.IFS` is ready.
+- Two logo files show as deleted in the working tree (`logo/CZU_logo_cerna.png`, `logo/logoKV.png`). That was so before this work and was left alone; both still exist in git and on the server, and the page uses them.
 
 ## Data flow & file format
 
