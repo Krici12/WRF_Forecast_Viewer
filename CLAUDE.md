@@ -81,19 +81,19 @@ Open items, none started, all the user's call:
 - The bottom panel takes about 36 % of a phone screen; the legend or the credit line could collapse.
 - On phones the About panel's close button covers the end of a text line while scrolling.
 - `Cache-Control: no-cache` for `index.html` in `.htaccess` would be the clean fix for stale pages; needs the user (or IT) to agree to touch that file.
-- The IFS datasets (`ifs_wrf`, `ifs_original`) are not on the web yet; they arrive with the production switch in `wrf-forecast` (see its `docs/IFS_PIPELINE.md`). `CREDITS.IFS` is ready.
+- The IFS datasets (`ifs_wrf`, `ifs_original`) are on the web since 2026-11-11 (production switch in `wrf-forecast`, see its `docs/IFS_PIPELINE.md`); no frontend change was needed, `CREDITS.IFS` shows the ECMWF statement.
 - Two logo files show as deleted in the working tree (`logo/CZU_logo_cerna.png`, `logo/logoKV.png`). That was so before this work and was left alone; both still exist in git and on the server, and the page uses them.
 
 ## Data flow & file format
 
-1. The HPC pipeline produces, per cycle: N chunk files named `forecast_<TAG2>_d<DOMAIN>_<CHUNK_START_ISO>.json` for WRF (6-hour chunks, e.g. `forecast_GFS_AA_20260815-18_d02_2026-08-17T00.json`) and `forecast_<TAG2>_orig_<CHUNK_START_ISO>.json` for the raw-driver "original" (~25 km) view, organized on the host into `data/<dataset_id>/` folders — 8 datasets since 2026-09-28: `gfs_wrf`, `arpege_wrf`, `icon_wrf`, `gem_wrf` (3 km WRF) and `gfs_original`, `arpege_original`, `icon_original`, `gem_original` (drivers sampled onto the same 0.25° 71×42 crop). Plus `manifest.json` listing the datasets. (`last_run.txt` is no longer used — triggering is cron on skirit.)
+1. The HPC pipeline produces, per cycle: N chunk files named `forecast_<TAG2>_d<DOMAIN>_<CHUNK_START_ISO>.json` for WRF (6-hour chunks, e.g. `forecast_GFS_AA_20260815-18_d02_2026-08-17T00.json`) and `forecast_<TAG2>_orig_<CHUNK_START_ISO>.json` for the raw-driver "original" (~25 km) view, organized on the host into `data/<dataset_id>/` folders — 10 datasets since 2026-11-11 (8 from 2026-09-28): `gfs_wrf`, `arpege_wrf`, `icon_wrf`, `gem_wrf`, `ifs_wrf` (3 km WRF) and `gfs_original`, `arpege_original`, `icon_original`, `gem_original`, `ifs_original` (drivers sampled onto the same 0.25° 71×42 crop). Plus `manifest.json` listing the datasets. (`last_run.txt` is no longer used — triggering is cron on skirit.)
 2. Each chunk JSON has `grid` (flattened `lat`/`lon`/`hgt` arrays), `metadata` (`run_time`, `domain`, `dx_m`, `nx`, `ny`), and `timesteps[]` (each with `time` plus flattened row-major `temp_c`/`precip_mm` arrays). Precip is **`mm/h` in every dataset** — the original stream de-accumulates the raw GRIB and divides by its 3 h step so it is directly comparable to WRF. `z700_m` was removed from the pipeline entirely (the pressure layer stays disabled client-side).
 3. `index.html` on load fetches `manifest.json`, then fetches first chunk **sequentially**, initializes map immediately (progressive loading), then continues fetching remaining chunks in background while updating slider/ticks dynamically. No drag-drop fallback — removed.
 4. Rendering: values are painted onto an offscreen `<canvas>` per timestep using linear-interpolated color ramps (`TEMP_STOPS`/`PREC_STOPS`), then blitted onto the Leaflet map as an `imageOverlay`. A marching-squares isoline implementation exists for pressure (`z700_m`) but is currently fully disabled — `renderIsolinesSVG()` is a no-op, the pressure layer button is disabled, and `z700_m` is deleted from every timestep right after load.
 
 ## GitHub Actions workflow (removed)
 
-The legacy `.github/workflows/gfs_trigger.yml` — a dead SSH-trigger-to-HPC that referenced long-deleted `scripts/check_gfs.py` / `extract_run.py` / `config.env` — has been **removed** as part of the cPanel migration. Triggering is cron on skirit (`trigger_gfs.sh` / `trigger_arpege.sh` / `trigger_icon.sh` / `trigger_gem.sh`) in the `wrf-forecast` repo. Don't re-add a GitHub Actions trigger.
+The legacy `.github/workflows/gfs_trigger.yml` — a dead SSH-trigger-to-HPC that referenced long-deleted `scripts/check_gfs.py` / `extract_run.py` / `config.env` — has been **removed** as part of the cPanel migration. Triggering is cron on skirit (`trigger_gfs.sh` / `trigger_arpege.sh` / `trigger_icon.sh` / `trigger_gem.sh` / `trigger_ifs.sh`) in the `wrf-forecast` repo. Don't re-add a GitHub Actions trigger.
 
 ## Architektura: rozdělení do modulů — HOTOVO (ověřeno funkční 2026-08-18, aktualizováno 2026-08-18)
 
@@ -108,10 +108,12 @@ data/                 ← složková struktura pro datasety
   arpege_wrf/         ← ARPEGE + WRF chunks (forecast_*_d02_*.json)
   icon_wrf/           ← ICON + WRF chunks (od 2026-09-28)
   gem_wrf/            ← GEM + WRF chunks (od 2026-09-28)
+  ifs_wrf/            ← IFS + WRF chunks (od 2026-11-11)
   gfs_original/       ← GFS ~25 km chunks (forecast_*_orig_*.json, stejný cyklus jako gfs_wrf)
   arpege_original/    ← ARPEGE ~25 km chunks (forecast_*_orig_*.json, stejný cyklus jako arpege_wrf)
   icon_original/      ← ICON (13 km ikosaedrická síť remapovaná na 0.25°) ~25 km chunks
   gem_original/       ← GEM (0.15°) vzorkovaný na stejnou 0.25° síť ~25 km chunks
+  ifs_original/       ← IFS (ECMWF open data, 0.25°) ~25 km chunks (od 2026-11-11)
   czechia_boundary.geojson  ← Hranice ČR pro overlay (zatím nepoužito)
 logo/                 ← Loga a branding
   CZU_logo_cerna.png  ← Logo univerzity (pro overlay v pravém dolním rohu)
@@ -146,7 +148,7 @@ Další globály z data.js: `currentDataset`, `currentManifest`.
 
 ### Dataset switcher (nově 2026-08-18)
 Manifest.json podporuje novou strukturu s polem `datasets`. Každý dataset má:
-- `id`: unikátní identifikátor (gfs_wrf, arpege_wrf, icon_wrf, gem_wrf, gfs_original, arpege_original, icon_original, gem_original — pořadí v manifestu = pořadí v přepínači)
+- `id`: unikátní identifikátor (gfs_wrf, arpege_wrf, icon_wrf, gem_wrf, ifs_wrf, gfs_original, arpege_original, icon_original, gem_original, ifs_original — pořadí v manifestu = pořadí v přepínači)
 - `label`: zobrazovaný text
 - `model`: "GFS", "ARPEGE", "ICON" nebo "GEM"
 - `stage`: "wrf" nebo "original"
