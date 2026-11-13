@@ -55,22 +55,35 @@
   }
   #error .err-retry:hover { border-color: var(--accent); color: var(--accent); }
 
-  /* Small "loading more" pill while background chunks stream in. */
-  #moreprog {
-    position: fixed; top: calc(var(--top-h) + 12px); left: 50%; transform: translateX(-50%);
-    z-index: 1000; display: none;
-    font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
-    color: var(--muted); background: var(--panel); border: 1px solid var(--border);
-    border-radius: 999px; padding: 5px 14px;
+  /* Short message under the header (js/locate.js toast). */
+  #toast {
+    position: fixed; top: calc(var(--top-real, var(--top-h)) + 14px); left: 50%;
+    transform: translateX(-50%) translateY(-6px);
+    z-index: 3000; max-width: calc(100vw - 32px);
+    background: #1c2128; color: #fff; font-size: 13px; line-height: 1.4;
+    border-radius: 8px; padding: 9px 14px; box-shadow: 0 6px 20px rgba(16,24,40,0.3);
+    opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
   }
+  #toast.show { opacity: 1; transform: translateX(-50%); }
 
   /* ── Map ────────────────────────────────────────────────────────────── */
   #map { position: fixed; inset: 0; z-index: 1; }
   .leaflet-container { background: #e8eef5 !important; font-family: var(--sans); }
   /* Zoom buttons sit under the header. */
-  .leaflet-top.leaflet-right { margin-top: calc(var(--top-h) + 4px); margin-right: 4px; }
+  /* --top-real: the measured height of the header (two rows on phones), set
+     by syncTop() in map.js. */
+  .leaflet-top.leaflet-right { margin-top: calc(var(--top-real, var(--top-h)) + 4px); margin-right: 4px; }
   .leaflet-bar { border: 1px solid var(--border) !important; box-shadow: 0 1px 4px var(--shadow) !important; }
   .leaflet-bar a { color: var(--text) !important; }
+  /* "My location" button under the zoom buttons (js/locate.js). */
+  .locate-ctl a.locate-btn { display: flex; align-items: center; justify-content: center; }
+  .leaflet-bar a.locate-btn.on { color: var(--accent) !important; background: var(--accent-soft); }
+  .locate-btn.busy svg { animation: locpulse 0.9s ease-in-out infinite; }
+  @keyframes locpulse { 50% { opacity: 0.25; } }
+  .me-dot {
+    border-radius: 50%; background: #1a73e8; border: 2.5px solid #fff;
+    box-shadow: 0 0 0 6px rgba(26,115,232,0.28), 0 1px 5px rgba(16,24,40,0.45);
+  }
 
   /* ── Header ─────────────────────────────────────────────────────────── */
   #topbar {
@@ -157,19 +170,39 @@
     z-index: 10001; display: none;
     width: min(700px, calc(100vw - 28px)); max-height: calc(100vh - var(--top-h) - 40px); overflow-y: auto;
     background: var(--solid); border: 1px solid var(--border); border-radius: 12px;
-    padding: 20px 22px; box-shadow: 0 12px 40px rgba(16,24,40,0.22);
+    padding: 0 22px 20px; box-shadow: 0 12px 40px rgba(16,24,40,0.22);
     scrollbar-width: thin;
     font-size: 13.5px; line-height: 1.5;
   }
-  #credits .cr-title { font-size: 15px; font-weight: 600; margin: 4px 44px 8px 0; }
-  #credits .cr-intro { color: var(--muted); margin-bottom: 16px; }
+  /* Title bar: stays on top while the panel scrolls. */
+  #credits .cr-bar {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin: 0 -22px 12px; padding: 12px 12px 10px 22px;
+    background: var(--solid); border-bottom: 1px solid var(--border);
+  }
+  #credits .cr-bar .cr-title { margin: 0; }
+  #credits .cr-title { font-size: 15px; font-weight: 600; margin: 4px 0 8px; }
+  #credits .cr-intro { color: var(--muted); margin-bottom: 12px; }
   #credits .cr-item { border-top: 1px solid var(--border); padding: 10px 0; }
+  /* Name tile of the provider: plain text, not a logo (see js/credits.js). */
+  #credits .cr-item.has-badge { display: flex; gap: 14px; align-items: flex-start; }
+  #credits .cr-body { flex: 1 1 0; min-width: 0; }
+  #credits .cr-badge {
+    flex: 0 0 108px; min-height: 56px; margin-top: 2px; padding: 8px 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; text-decoration: none;
+    background: #f6f8fa; border: 1px solid var(--border); border-radius: 10px;
+  }
+  #credits .cr-badge:hover { border-color: var(--accent); }
+  #credits .cr-badge .bn { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.2; }
+  #credits .cr-badge .bp { font-size: 11px; color: var(--muted); margin-top: 3px; }
   #credits .cr-name { font-weight: 600; }
   #credits .cr-prod { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
   #credits .cr-text { margin-top: 2px; }
   #credits a { color: var(--accent); }
   #credits .cr-close {
-    position: absolute; top: 12px; right: 12px;
+    flex: 0 0 34px;
     width: 34px; height: 34px;
     background: var(--solid); border: 1px solid var(--border); border-radius: 8px;
     font-size: 14px; cursor: pointer; color: var(--muted);
@@ -194,9 +227,12 @@
   .ctrl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .time-block { min-width: 0; }
   .time-big {
-    font-size: 20px; font-weight: 600; letter-spacing: 0.1px;
+    display: flex; align-items: baseline; gap: 10px;
+    font-size: 18px; font-weight: 600; letter-spacing: 0.1px;
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
+  .t-clock { font-size: 24px; line-height: 1; }
+  .t-zone  { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--muted); margin-left: -4px; }
   .time-sub { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
   .btn-group { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
   .cbtn {
@@ -217,36 +253,59 @@
   .cbtn.play.playing .ic-pause { display: block; }
   .cbtn.spd { color: var(--accent); font-weight: 600; margin-left: 6px; }
 
-  .slider-wrap { padding: 0 2px; }
-  input[type=range] {
-    --p: 0%;
-    display: block; width: 100%; -webkit-appearance: none; appearance: none;
-    height: 6px; border-radius: 3px; outline: none; cursor: pointer;
-    background: linear-gradient(to right, var(--accent) var(--p), var(--border) var(--p));
+  /* Time axis. The native range input is transparent and lies over .track;
+     .track and .ticks are inset by half a thumb, so a time is at the same x
+     on the track, under the thumb centre and on the ticks. */
+  .slider-wrap { position: relative; --thumb: 18px; --h: 22px; }
+  .track {
+    position: absolute; left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2);
+    top: calc((var(--h) - 8px) / 2); height: 8px; border-radius: 4px;
+    background: #e3e7ed; box-shadow: inset 0 0 0 1px rgba(16,24,40,0.07);
+    pointer-events: none;
   }
+  /* Where the dataset has a forecast (striped until it is loaded)... */
+  .trk-data {
+    position: absolute; top: 0; bottom: 0; border-radius: 4px; display: none;
+    background: repeating-linear-gradient(135deg, rgba(11,95,192,0.34) 0 4px, rgba(11,95,192,0.14) 4px 8px);
+  }
+  /* ...and what is loaded. */
+  #trk-loaded { position: absolute; inset: 0; }
+  .trk-seg { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); opacity: 0.8; }
+  .trk-now {
+    position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px;
+    background: var(--text); border-radius: 1px; display: none;
+  }
+  input[type=range] {
+    position: relative; display: block; width: 100%; height: var(--h); margin: 0;
+    -webkit-appearance: none; appearance: none;
+    background: transparent; outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: var(--h); background: transparent; }
+  input[type=range]::-moz-range-track { height: var(--h); background: transparent; }
   input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    -webkit-appearance: none; width: var(--thumb); height: var(--thumb); border-radius: 50%;
+    margin-top: calc((var(--h) - var(--thumb)) / 2);
     background: var(--solid); border: 3px solid var(--accent); cursor: pointer;
-    box-shadow: 0 1px 4px rgba(16,24,40,0.25);
+    box-shadow: 0 1px 4px rgba(16,24,40,0.3);
   }
   input[type=range]::-moz-range-thumb {
-    width: 12px; height: 12px; border-radius: 50%;
+    width: calc(var(--thumb) - 6px); height: calc(var(--thumb) - 6px); border-radius: 50%;
     background: var(--solid); border: 3px solid var(--accent); cursor: pointer;
+    box-shadow: 0 1px 4px rgba(16,24,40,0.3);
   }
-  .ticks { position: relative; height: 22px; margin-top: 6px; }
-  .day-tick { position: absolute; height: 100%; width: 0; }
-  .day-line {
-    position: absolute; top: 0; left: 0;
-    width: 1px; height: 6px; background: rgba(0,0,0,0.3);
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-soft), 0 1px 4px rgba(16,24,40,0.3); }
+  /* One cell per local day, with a line at midnight; a short tick at noon. */
+  .ticks { position: relative; height: 22px; margin: 3px calc(var(--thumb) / 2) 0; }
+  .day {
+    position: absolute; top: 0; height: 100%; overflow: hidden;
+    border-left: 1px solid rgba(16,24,40,0.3);
+    padding-top: 5px; text-align: center; white-space: nowrap;
+    font-family: var(--mono); font-size: 12px; line-height: 1.3; color: var(--muted);
   }
-  .day-label {
-    position: absolute; top: 8px; left: 0;
-    transform: translateX(-50%);
-    font-family: var(--mono); font-size: 12px; color: var(--muted);
-    white-space: nowrap;
-  }
-  .day-tick.first .day-label { transform: translateX(0); }
-  .day-tick.last  .day-label { transform: translateX(-100%); }
+  .day.first { border-left-color: transparent; }
+  .day.today { color: var(--text); font-weight: 600; }
+  .day .short { display: none; }
+  .noon { position: absolute; top: 0; width: 1px; height: 5px; background: rgba(16,24,40,0.22); }
 
   /* Legend across the panel; the run info shares the line of its title. */
   .panel-foot { position: relative; }
@@ -293,7 +352,7 @@
   }
   body.compact #topbar { display: none !important; }
   body.compact .leaflet-top.leaflet-right { margin-top: 4px; }
-  body.compact #moreprog { top: calc(12px + env(safe-area-inset-top)); }
+  body.compact #toast { top: calc(12px + env(safe-area-inset-top)); }
   body.compact #controls { gap: 6px; }
   body.compact .ctrl-row { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 10px; }
   body.compact .time-block { flex: 1 1 0; }
@@ -318,6 +377,11 @@
   .tk   { color: var(--muted); }
   .tv   { color: var(--text); font-weight: 600; }
   .tsep { border-top: 1px solid var(--border); margin: 5px 0; }
+  /* "WRF" after ELEV: the height is the WRF terrain, not this dataset's own. */
+  .tv-note {
+    font-size: 9.5px; font-weight: 500; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 3px; margin-left: 3px;
+  }
   /* Pinned point: the box takes clicks (close button) and gets a title row. */
   #tip.pinned { pointer-events: auto; border-color: #aab4c0; box-shadow: 0 4px 16px rgba(16,24,40,0.18); }
   .tip-head {
@@ -392,16 +456,21 @@
     .lbtn .long  { display: none; }
     .lbtn .short { display: inline; }
 
-    #moreprog { top: calc(112px + env(safe-area-inset-top)); }
     .leaflet-control-zoom { display: none; }
+    /* The location button stays, at a size a finger can hit. */
+    .locate-ctl a.locate-btn { width: 40px; height: 40px; }
 
     #credits {
       inset: 0; top: 0; left: 0; transform: none;
       width: auto; max-height: none; border: none; border-radius: 0;
-      padding: calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+      padding: 0 16px calc(20px + env(safe-area-inset-bottom));
       font-size: 14px;
     }
-    #credits .cr-close { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 12px; }
+    #credits .cr-bar { margin: 0 -16px 12px; padding: calc(10px + env(safe-area-inset-top)) 10px 10px 16px; }
+    #credits .cr-item.has-badge { gap: 10px; }
+    #credits .cr-badge { flex-basis: 86px; min-height: 50px; padding: 6px 4px; }
+    #credits .cr-badge .bn { font-size: 12.5px; }
+    #credits .cr-badge .bp { font-size: 10.5px; }
 
     #controls {
       left: 0; right: 0; bottom: 0; transform: none; width: auto;
@@ -414,8 +483,11 @@
     .cbtn.fold { flex: 0 0 40px; height: 36px; order: 0; }
     .btn-group { flex: 1 1 100%; }
     body.compact #controls { padding-top: 8px; }
-    body.compact .time-big { font-size: 16px; }
-    .time-big { font-size: 17px; }
+    body.compact .time-big { font-size: 15px; gap: 8px; }
+    body.compact .t-clock { font-size: 18px; }
+    .time-big { font-size: 16px; gap: 8px; }
+    .t-clock { font-size: 21px; }
+    .t-zone { font-size: 11px; }
     .time-sub { font-size: 11px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; }
     .time-block { min-width: 0; }
     .btn-group { gap: 6px; }
@@ -424,10 +496,11 @@
     body.compact .btn-group .cbtn.play { flex: 0 0 38px; width: 38px; height: 38px; }
     .cbtn.spd { margin-left: 0; }
 
-    input[type=range]::-webkit-slider-thumb { width: 24px; height: 24px; }
-    input[type=range]::-moz-range-thumb { width: 18px; height: 18px; }
+    .slider-wrap { --thumb: 24px; --h: 28px; }
     .ticks { height: 20px; }
-    .day-label { font-size: 10.5px; }
+    .day { font-size: 10.5px; }
+    .day .long  { display: none; }
+    .day .short { display: inline; }
 
     .runinfo { top: 1px; font-size: 10.5px; }
     .runinfo .opt { display: none; }

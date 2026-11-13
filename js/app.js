@@ -6,8 +6,8 @@
 // ══════════════════════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(!allTimesteps.length)return;
-  if(e.key==='ArrowRight')go(1);
-  if(e.key==='ArrowLeft')go(-1);
+  if(e.key==='ArrowRight')stepBy(1);
+  if(e.key==='ArrowLeft')stepBy(-1);
   if(e.key===' '){e.preventDefault();togglePlay();}
   if(e.key==='t')setVar('temp_c');
   if(e.key==='p')setVar('precip_mm');

@@ -5,8 +5,8 @@
 //  pomocné funkce marchingSquares/smooth/renderIsolinesSVG, které tu zůstávají
 //  jen pro úplnost).
 //  Odkazuje na globály z hlavního bloku (metadata, gridData, allTimesteps, step,
-//  varName, offCanvas, imgOv, map, isoSvg) a volá buildTicks/setStep/updateLegend
-//  (controls.js), onHover/onMapClick/restorePin (tooltip.js), makeLocator/
+//  varName, offCanvas, imgOv, map, isoSvg) a volá showTime/drawCover/updateLegend
+//  (controls.js), onHover/onMapClick/restorePin (tooltip.js), initLocate (locate.js), makeLocator/
 //  buildWarp (geo.js) a makeShader (colors.js) — vše až za běhu.
 //  initApp() volá js/data.js po načtení gridu.
 // ══════════════════════════════════════════════════════════════════════════
@@ -51,6 +51,16 @@ function gridGeomFor(g, nx, ny){
   return gm;
 }
 
+// Height of the header for the stylesheet (--top-real): the map buttons and
+// the toast sit right under it, and on phones it has two rows.
+function syncTop(){
+  const tb=document.getElementById('topbar');
+  if(!tb)return;
+  const h=tb.getBoundingClientRect().bottom;
+  if(h>0)document.documentElement.style.setProperty('--top-real',Math.round(h)+'px');
+}
+window.addEventListener('resize',syncTop);
+
 // ══════════════════════════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════════════════════════
@@ -60,6 +70,8 @@ function initApp(){
   document.getElementById('layers').style.display='flex';
   document.getElementById('controls').style.display='flex';
   document.getElementById('legend').style.display='block';
+
+  syncTop();
 
   // Re-init protection: initApp() is re-run whenever the user switches dataset.
   // Leaflet refuses to init a second map on the same container, so destroy the
@@ -77,15 +89,6 @@ function initApp(){
   imgOv=null; isoSvg=null; offCanvas=null;
 
   const m=metadata;
-  document.getElementById('m-run').textContent=fmtRun(m);
-  document.getElementById('m-dom').textContent=`D0${m.domain}`;
-  document.getElementById('m-dx').textContent=`${m.dx_m/1000} km`;
-  document.getElementById('m-n').textContent=m.n_timesteps;
-
-  const sl=document.getElementById('slider');
-  sl.max=m.n_timesteps-1;
-  sl.value=0;
-  buildTicks();
 
   // zoomSnap 0.1: fitBounds can fill the free area between the header and
   // the bottom panel instead of dropping to the next whole zoom level.
@@ -97,10 +100,13 @@ function initApp(){
   // Esri "World Light Gray Canvas" — neutrální šedo-bílý podklad, který záměrně
   // nekrade barvy teplotní vizualizace. Zdarma, bez API klíče, bez registrace.
   // (Carto Positron vyžadoval placený klíč; barevný OSM standard kazil grading.)
+  // Credit text as Esri states it for this layer (item ed712cb1db3e4bae9e85329040fb9a49).
+  // The layer is a legacy basemap that Esri retires in December 2029.
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{
-    attribution:'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
+    attribution:'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> | Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community'
   }).addTo(map);
   L.control.zoom({position:'topright'}).addTo(map);
+  if(typeof initLocate==='function')initLocate(map);     // "my location" button (js/locate.js)
   smoothZoomOff=initSmoothZoom(map);
   // Data-source attribution of the driver on the map (js/credits.js).
   if(typeof updateCredits==='function')updateCredits();
@@ -150,8 +156,9 @@ function initApp(){
   map.on('zoomanim',hidePinnedTip);
   if(typeof restorePin==='function')restorePin();
 
-  setStep(0);
-  updateLegend();
+  _shownTs=null;             // a new canvas: the step on screen must be painted again
+  showTime();
+  drawCover();
 
   // Aktualizovat dataset switcher po inicializaci
   if(typeof updateDatasetSwitcher === 'function'){

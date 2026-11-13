@@ -5,14 +5,19 @@
 //  na initApp() — čte/volá je až za běhu, takže stačí, aby existovaly globálně.
 //
 //  Progresivní načítání:
-//    1) manifest.json       (grid_file + files)
+//    1) manifest.json       (grid_file + files; today_start + horizon dávají
+//                            pevnou časovou osu, controls.js initAxis)
 //    2) grid.json           (jednou; grid už NENÍ v každém chunku). Grid se drží
 //                            v paměti (loadGrid): všechny WRF datasety sdílejí
 //                            jednu síť, takže se 3 MB soubor stahuje jen jednou
 //                            za návštěvu. Táž síť je i pevná vrstva terénu
 //                            (`terrain`) pro ELEV v popisku u všech datasetů.
 //    3) chunk po chunku     — mapa zobrazena hned po gridu (initApp), timesteps
-//                            se plní na pozadí.
+//                            se plní na pozadí. Jako první se stahuje chunk s
+//                            časem, který je na obrazovce (wantTime), pak
+//                            pozdější a nakonec dřívější: správný snímek je
+//                            vidět po prvním souboru a čas se při přepnutí
+//                            datasetu nemění.
 //
 //  Odolnost: každý fetch má timeout + retry; pokud něco selže, overlay #prog se
 //  VŽDY skryje a zobrazí se #error s tlačítkem RETRY. Nikdy nezůstane jen logo.
@@ -113,6 +118,7 @@ async function tryLoadManifest(){
 
     currentDataset = dataset;
     currentManifest = manifest;
+    initAxis(manifest);                  // fixed time axis (controls.js)
     await autoLoadFromManifest(manifest, dataset);
   }catch(err){
     console.error('Manifest load error:', err.message);
@@ -124,10 +130,6 @@ async function tryLoadManifest(){
 let currentDataset = null;
 let currentManifest = null;
 
-// Zda už proběhl první render aktuálního kroku po načtení dat (aby se při
-// příchodu dalších chunků zbytečně nevykreslovalo dokola).
-let initialRendered = false;
-
 // Counter of dataset loads: a load that is no longer the newest one stops
 // (the user switched dataset while chunks were still arriving).
 let loadSeq = 0;
@@ -136,8 +138,9 @@ let loadSeq = 0;
 
 // Terrain height for the ELEV row of the value box (js/tooltip.js): the 3 km
 // WRF terrain, the same for every dataset and every run. {grid, nx, ny, loc}.
-// The driver ("original") grids carry hgt = 0 everywhere, so they cannot
-// supply it themselves.
+// Used for the WRF datasets and as a fallback for a driver ("original") grid
+// that has no orography of its own (hgt_model is not true: cycles
+// postprocessed before 2026-11-13 carry hgt = 0 everywhere).
 let terrain = null;
 let _terrainPending = false;
 const _gridCache = {};           // dataset id -> grid object, for this page visit
@@ -164,9 +167,10 @@ async function loadGrid(dataset){
   return g;
 }
 
-// A driver dataset opened before any WRF one: fetch the terrain in the background.
-function ensureTerrain(manifest){
-  if(terrain || _terrainPending) return;
+// A driver dataset without its own orography, opened before any WRF one:
+// fetch the WRF terrain in the background.
+function ensureTerrain(manifest, grid){
+  if(terrain || _terrainPending || (grid && grid.hgt_model)) return;
   const d = (manifest.datasets || []).find(x => x.stage === 'wrf' && x.files && x.files.length);
   if(!d) return;
   _terrainPending = true;
@@ -184,6 +188,27 @@ function buildFilePath(dataset, filename) {
 
 // ── Progresivní načítání ────────────────────────────────────
 
+// Resolution of a dataset for the panel: "3 km" for WRF (a Lambert grid, its
+// step is defined in kilometres), "0.25° · ~25 km" for a driver on its
+// regular lat/lon grid (step read from the grid itself).
+function resText(dataset, g){
+  const km = Math.round(((g && g.dx_m) || (dataset.grid || {}).dx_m || 0) / 1000);
+  if(dataset.stage === 'wrf' || !g || !g.lat || !g.nx) return km + ' km';
+  const deg = Math.abs(g.lat[g.nx] - g.lat[0]);
+  return (deg ? +deg.toFixed(3) + '° · ' : '') + '~' + km + ' km';
+}
+
+// Order in which the chunk files are fetched: the one holding the moment on
+// screen first, then the later ones, then the earlier ones (nearest first).
+function loadOrder(starts, t){
+  let first = 0;
+  for(let i = 0; i < starts.length; i++){ if(starts[i] <= t) first = i; }
+  const order = [];
+  for(let i = first; i < starts.length; i++) order.push(i);
+  for(let i = first - 1; i >= 0; i--) order.push(i);
+  return order;
+}
+
 async function autoLoadFromManifest(manifest, dataset) {
   // Map is shown as soon as the grid is in hand; timesteps fill in behind it.
   document.getElementById('prog').style.display = 'flex';
@@ -191,93 +216,64 @@ async function autoLoadFromManifest(manifest, dataset) {
 
   const myLoad = ++loadSeq;
   try {
-    const files = dataset.files.slice().sort();
-    // Switching dataset: remember the valid time on screen so the new dataset
-    // opens at the same moment (runs start at different times), and start the
-    // new one cleanly at step 0 until that moment has loaded.
-    let keepTime = (allTimesteps[step] || {}).time || null;
-    initialRendered = false;
-    step = 0;
+    // Chunk files in time order (their names also carry the run, and one
+    // dataset can hold chunks of two runs, so the name order is not enough).
+    const files = dataset.files.slice().sort((a, b) => (chunkStartMs(a) - chunkStartMs(b)) || (a < b ? -1 : 1));
+    const starts = files.map(chunkStartMs);
+    const fallbackH = dataset.stage === 'wrf' ? 1 : 3;
     allTimesteps = [];
+    stepTimes = [];                      // controls.js: nothing of the new dataset is loaded yet
+    cover = {from: starts[0], to: starts[starts.length - 1] + CHUNK_MS - fallbackH * HOUR, loaded: []};
+    stepH = fallbackH;
+    drawCover();
 
     // 1) Grid is its own file now (it used to be duplicated in every chunk).
     const g = await loadGrid(dataset);
     if(myLoad !== loadSeq) return;
     gridData = g;
-
-    // Shallow metadata: build_web puts nx/ny/dx_m in grid.json; keep a
-    // placeholder object until the first chunk refines it.
     metadata = {
-      run_time:     '—',
-      run_dir:      dataset.label || dataset.id,
-      domain:       dataset.stage === 'wrf' ? 2 : 0,
-      dx_m:         (g && g.dx_m) ? g.dx_m : (dataset.grid ? dataset.grid.dx_m : 0),
-      nx:           (g && g.nx)   ? g.nx   : (dataset.grid ? dataset.grid.nx   : 0),
-      ny:           (g && g.ny)   ? g.ny   : (dataset.grid ? dataset.grid.ny   : 0),
-      n_timesteps:  0,
+      domain: dataset.stage === 'wrf' ? 2 : 0,
+      dx_m:   (g && g.dx_m) ? g.dx_m : (dataset.grid ? dataset.grid.dx_m : 0),
+      nx:     (g && g.nx)   ? g.nx   : (dataset.grid ? dataset.grid.nx   : 0),
+      ny:     (g && g.ny)   ? g.ny   : (dataset.grid ? dataset.grid.ny   : 0),
     };
+    document.getElementById('m-run').textContent = '—';
+    document.getElementById('m-res').textContent = resText(dataset, g);
 
-    // 2) Show the map immediately; remaining chunks load in the background.
+    // 2) Show the map immediately; the chunks load in the background.
     initApp();
     if(typeof initDatasetSwitcher === 'function'){
       initDatasetSwitcher(manifest);
     }
     document.getElementById('prog').style.display = 'none';
-    ensureTerrain(manifest);
+    ensureTerrain(manifest, g);
+    timesChanged();
 
-    // 3) Load chunks sequentially, appending timesteps as they arrive.
-    // Map is already visible, so use the small "more" pill — not the full
-    // LOADING overlay (that would flash a blank screen over the map).
-    const more = document.getElementById('moreprog');
-    for (let i = 0; i < files.length; i++) {
-      const f = buildFilePath(dataset, files[i]);
-      document.getElementById('prog-label').textContent = `LOADING CHUNK ${i + 1}/${files.length}...`;
-      more.style.display = 'block';
-      more.textContent = `LOADING ${i + 1}/${files.length}…`;
-
-      const chunk = await fetchWithRetry(f, 2);
+    // 3) Chunks, the one with the moment on screen first. Each arrives whole
+    // and is put in its place, so allTimesteps is always in time order.
+    const parts = new Array(files.length).fill(null);
+    for (const i of loadOrder(starts, wantTime)) {
+      const chunk = await fetchWithRetry(buildFilePath(dataset, files[i]), 2);
       if(myLoad !== loadSeq) return;     // a newer dataset load took over
 
-      // First chunk refines the metadata (run time, domain, real nx/ny).
-      if (i === 0) {
-        metadata = chunk.metadata || metadata;
-        metadata.nx = metadata.nx || (g && g.nx);
-        metadata.ny = metadata.ny || (g && g.ny);
-        metadata.dx_m = metadata.dx_m || (g && g.dx_m);
-        // Refine the topbar with the real run metadata from the first chunk.
-        document.getElementById('m-run').textContent = fmtRun(metadata);
-        document.getElementById('m-dom').textContent = 'D0' + metadata.domain;
-        document.getElementById('m-dx').textContent = Math.round(metadata.dx_m / 1000) + ' km';
+      const run = (chunk.metadata || {}).run_time || null;
+      const steps = chunk.timesteps || [];
+      steps.forEach(ts => { ts.ms = isoMs(ts.time); ts.run = run; });
+      parts[i] = steps;
+      allTimesteps = [].concat(...parts.filter(Boolean));
+      if(steps.length){
+        // Loaded piece on the track: up to the next chunk, so neighbours join.
+        cover.loaded.push([steps[0].ms, Math.min(starts[i] + CHUNK_MS, cover.to)]);
       }
-
-      for (let k = 0; k < chunk.timesteps.length; k++) {
-        allTimesteps.push(chunk.timesteps[k]);
-      }
-
-      // Update the total step count and UI (slider/ticks) as chunks arrive.
-      metadata.n_timesteps = allTimesteps.length;
-      document.getElementById('m-n').textContent = allTimesteps.length;
-      if(typeof updateSliderMax === 'function') updateSliderMax();
-      if(typeof buildTicks === 'function')       buildTicks();
-
-      // Once real timesteps exist, render step 0 (or the current step) so the
-      // map, the time display and the slider are immediately correct — instead
-      // of the blank/stale first frame that appeared on load before.
-      if(!initialRendered && allTimesteps.length){
-        initialRendered = true;
-        if(typeof setStep === 'function') setStep(step);
-      }
-      // Jump to the remembered valid time once it has arrived, unless the
-      // user has already moved the slider themselves.
-      if(keepTime && step === 0 && typeof setStep === 'function'){
-        // First step at or after that time (datasets differ in time step).
-        const i = allTimesteps.findIndex(t => t.time >= keepTime);
-        if(i >= 0){ keepTime = null; setStep(i); }
-      } else if(step !== 0){
-        keepTime = null;
-      }
+      timesChanged();                    // sets stepH from the real steps
+      // The real ends of the dataset, once its first and last chunks are in.
+      if(parts[0] && parts[0].length) cover.from = parts[0][0].ms;
+      const lastPart = parts[parts.length - 1];
+      cover.to = lastPart && lastPart.length ? lastPart[lastPart.length - 1].ms
+                                              : starts[starts.length - 1] + CHUNK_MS - stepH * HOUR;
+      cover.loaded.forEach(sg => { if(sg[1] > cover.to) sg[1] = cover.to; });
+      drawCover();
     }
-    more.style.display = 'none';
 
     console.log('All chunks loaded:', allTimesteps.length, 'timesteps');
   } catch (err) {

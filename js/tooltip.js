@@ -12,10 +12,27 @@
 //
 //  Box order: geography first (LAT, LON, ELEV), then the forecast (TEMP,
 //  PRECIP). LAT/LON are those of the grid point, not of the cursor.
-//  ELEV comes from one fixed terrain layer, the 3 km WRF terrain (data.js
-//  `terrain`), for every dataset: the driver ("original") grids carry no
-//  terrain of their own.
+//  ELEV is the terrain of the model on screen: the grid's own `hgt` for WRF
+//  and for a driver ("original") grid that carries its model orography
+//  (grid.json `hgt_model`, pipeline from 2026-11-13). A driver grid without
+//  it falls back to the 3 km WRF terrain (data.js `terrain`), marked "WRF".
+//
+//  Around the map buttons (zoom, my location) there is a margin of
+//  CTL_MARGIN px where the box does not appear and a click does not pin.
 // ══════════════════════════════════════════════════════════════════════════
+const CTL_MARGIN=30;
+
+// Is the screen position on a map button or within the margin around one?
+function nearMapControl(x,y){
+  if(typeof x!=='number'||typeof y!=='number')return false;
+  const els=document.querySelectorAll('.leaflet-control-zoom, .locate-ctl');
+  for(let i=0;i<els.length;i++){
+    const r=els[i].getBoundingClientRect();
+    if(!r.width||!r.height)continue;              // hidden (phones have no zoom buttons)
+    if(x>=r.left-CTL_MARGIN&&x<=r.right+CTL_MARGIN&&y>=r.top-CTL_MARGIN&&y<=r.bottom+CTL_MARGIN)return true;
+  }
+  return false;
+}
 
 let pinLL=null;        // where the user clicked (kept across dataset switches)
 let pinInfo=null;      // grid point pinned on the current map
@@ -31,21 +48,24 @@ function probe(latlng){
   return {k:c.k,i:c.i,j:c.j,lat:gridData.lat[c.k],lon:gridData.lon[c.k]};
 }
 
-// Terrain height [m] at a position from the fixed terrain layer; null while
-// it is not loaded (or the position is outside it).
-function elevAt(lat,lon){
-  if(typeof terrain==='undefined'||!terrain)return null;
-  const c=terrain.loc.nearest(lat,lon);
-  if(!c)return null;
-  const h=terrain.grid.hgt[c.k];
-  return (h===null||h===undefined||h<=-999)?null:h;
+// Terrain height of a grid point: {h, wrf}. h [m] is null while unknown;
+// wrf = true when it is the WRF terrain standing in for a driver grid that
+// has no orography of its own.
+function elevAt(info){
+  const good=h=>(h===null||h===undefined||h<=-999)?null:h;
+  const own=gridData&&gridData.hgt&&
+    (gridData.hgt_model===true||(typeof currentDataset!=='undefined'&&currentDataset&&currentDataset.stage==='wrf'));
+  if(own)return {h:good(gridData.hgt[info.k]),wrf:false};
+  if(typeof terrain==='undefined'||!terrain)return {h:null,wrf:true};
+  const c=terrain.loc.nearest(info.lat,info.lon);
+  return {h:c?good(terrain.grid.hgt[c.k]):null,wrf:true};
 }
 
 function tipHtml(info,pinned){
   const ts=allTimesteps[step];
   const t=ts?ts.temp_c[info.k]:null;
   const p=ts?ts.precip_mm[info.k]:null;
-  const h=elevAt(info.lat,info.lon);
+  const el=elevAt(info),h=el.h;
   const ok=v=>v!==null&&v!==undefined&&v>-999;
   const tc=!ok(t)?'inherit':t<=0?'#0a7fd0':t<=15?'#2a9a44':t<=25?'#d9731f':'#d9362e';
   const lat=Math.abs(info.lat).toFixed(3)+(info.lat<0?'°S':'°N');
@@ -57,7 +77,7 @@ function tipHtml(info,pinned){
   return head+`
     <div class="tr"><span class="tk">LAT</span><span class="tv">${lat}</span></div>
     <div class="tr"><span class="tk">LON</span><span class="tv">${lon}</span></div>
-    <div class="tr"><span class="tk">ELEV</span><span class="tv">${h===null?'—':Math.round(h)+' m'}</span></div>
+    <div class="tr"><span class="tk">ELEV</span><span class="tv">${h===null?'—':Math.round(h)+' m'+(el.wrf?' <span class="tv-note" title="Terrain of the 3 km WRF grid: this dataset carries no terrain of its own">WRF</span>':'')}</span></div>
     <div class="tsep"></div>
     <div class="tr"><span class="tk">TEMP</span><span class="tv" style="color:${tc}">${ts?(ok(t)?t.toFixed(1).replace(/^-0\.0$/,'0.0')+' °C':'N/A'):'…'}</span></div>
     <div class="tr"><span class="tk">PRECIP</span><span class="tv" style="color:#0969da">${ts?(ok(p)?p.toFixed(2)+' mm·h⁻¹':'N/A'):'…'}</span></div>
@@ -90,8 +110,8 @@ function hideHover(){
 function onHover(e){
   if(pinInfo||!geom)return;                       // a pinned point owns the box
   const oe=e.originalEvent||{};
-  // Over the zoom buttons (or any map control) the box would be in the way.
-  if(oe.target&&oe.target.closest&&oe.target.closest('.leaflet-control')){hideHover();return;}
+  // On the map buttons and in the margin around them the box would be in the way.
+  if((oe.target&&oe.target.closest&&oe.target.closest('.leaflet-control'))||nearMapControl(oe.clientX,oe.clientY)){hideHover();return;}
   const info=probe(e.latlng);
   if(!info){hideHover();return;}
   if(!hoverInfo||hoverInfo.k!==info.k){
@@ -114,6 +134,8 @@ function onHover(e){
 let _clickAt=0,_pinBefore=null;
 function onMapClick(e){
   if(!geom)return;
+  const ce=e.originalEvent||{};
+  if(nearMapControl(ce.clientX,ce.clientY))return;       // a near miss of a button
   // Remember the pin as it was before a click, so that a double click (which
   // zooms the map and arrives as two clicks first) can put it back.
   const now=Date.now();

@@ -52,16 +52,30 @@ rclone sync --progress \
 
 `js/credits.js` holds the attribution each data provider's licence requires, keyed by the dataset's `model` in `manifest.json` (GFS, ARPEGE, ICON, GEM, IFS). The wording was copied from the providers' licence pages on 2026-11-10 (URLs in the file header); do not reword it. Three places show it: the `Data: <provider>` chip in the header (`#m-src`; phones show only the provider), the About panel it opens (`#credits`, all providers + base map + logos), and the always-visible credit line at the bottom of the control panel (`#credit-text`, the provider's full statement for the driver on the map, on phones too). In compact mode (see Layout) the full line is replaced by the one-line `#credit-short` ("Data: <provider> · Base map © Esri", opens the About panel), so a credit is on screen in every state. The Leaflet attribution line carries only the Esri tile credit and is hidden below 1240 px, where the panel would cover it (Esri is in the credit line). `updateCredits()` runs from `initApp()` after every dataset switch. A new driver needs a new `CREDITS` entry before its data go public; ECMWF (IFS) in particular requires the sentence "This service is based on data and products of the European Centre for Medium-Range Weather Forecasts (ECMWF)", the source, the CC BY 4.0 statement and the disclaimer.
 
+## Time axis, loading order, location (2026-11-13)
+
+- **Fixed time axis** (controls.js): the slider is one axis for every dataset, `axis` = `today_start` .. `horizon` of `manifest.json` (today's 00 UTC + 5 days), one position per hour. `wantTime` is the moment the user asked for and survives a dataset switch; `step` is the loaded step nearest to it, and the thumb sits on that step's time. A 3-hourly driver dataset therefore snaps to its own steps and going back to an hourly dataset returns to the chosen hour. The page opens at the present hour.
+- **Track** (`#track`): grey = axis, striped blue `#trk-data` = where the dataset has a forecast (from the chunk file names, before anything is loaded), solid blue `.trk-seg` = loaded, dark line `#trk-now` = the present moment. `.track` and `.ticks` are inset by half a thumb (`--thumb`), so a time has the same x on the track, under the thumb centre and on the ticks. Ticks: one cell per local (Prague) day, labels "Fri 13 Nov" ("Fri 13" on phones), today bold, a short tick at local noon.
+- **Buttons**: `go(±6)` moves by hours (first step at or beyond the target), `stepBy(±1)` by one step of the dataset; the small buttons are relabelled to the dataset's step (`−1h` / `−3h`). Before this the buttons moved by step index, so on a 3-hourly dataset "+1h" jumped 3 h and "+6h" 18 h.
+- **Loading order** (data.js `loadOrder`): the chunk that holds `wantTime` first, then the later ones, then the earlier ones. Chunks are placed by their start time (`chunkStartMs` from the file name; one dataset can hold chunks of two runs, so the name order is not the time order). Every step carries `ms` and `run` (the run of its own chunk); the lead time and "Run" in the panel follow the step on screen.
+- **ELEV** (tooltip.js `elevAt`): the grid's own `hgt` for WRF and for a driver grid with `hgt_model: true` in `grid.json` (the driver's own orography, exported by `wrf-forecast` since 2026-11-13). A driver grid without the flag (older cycles) falls back to the 3 km WRF terrain and the value is marked "WRF".
+- **Margin around map buttons**: `nearMapControl()` keeps the value box away, and ignores clicks, within `CTL_MARGIN` = 30 px of the zoom and location buttons.
+- **My location** (js/locate.js): button under the zoom buttons (the only map button on phones). The browser's position gets a blue dot (`mePane`, z-index 730, above the pin ring), the map moves there and the grid point of the place is pinned. Second click removes it. `myPos` survives dataset switches; nothing is sent or stored. `toast()` shows errors.
+- `syncTop()` (map.js) writes the measured header height to `--top-real`; the map buttons and the toast sit under it (the header has two rows on phones).
+- **Provider name tiles, not logos** (js/credits.js `badge`): the providers' terms do not allow their logos without consent (NOAA, ECCC, Météo-France; ECMWF only as a link; DWD not found). Sources are in the file header. Add a real logo only with the provider's written consent.
+- **Base map credit**: "Powered by Esri | Sources: Esri, HERE, Garmin, © OpenStreetMap contributors, and the GIS User Community" (the text Esri gives for World Light Gray Base; the earlier "Maxar, Earthstar Geographics" belonged to the imagery layer). The layer is a legacy basemap that Esri retires in **December 2029**; it is licensed under the Esri Master License Agreement and whether use without an account is covered was not established.
+- The About panel has a sticky title bar (`.cr-bar`), so the close button no longer covers text.
+
 ## Layout (redesign 2026-11-11)
 
 - **Header `#topbar`** (full width, solid white): ČZU logo (link to https://www.fzp.czu.cz/en) and Chytrá krajina 2030+ logo (`.brand-kv`, link to https://www.chytra-krajina.cz) + title, dataset select, variable switch `#layers` (segmented, short labels on phones), credit chip (inline SVG "i" icon, centred by geometry). Two rows on phones (≤ 768 px). The header is solid white because `logo/logoKV.png` has an opaque white background.
 - **Compact mode** (`body.compact`, `setCompact()` / `toggleCompact()` / `initCompact()` in controls.js): the chevron button `#compact-btn` in the bottom panel hides the header and everything in the panel except play, the time, the slider with its day ticks and the one-line credit. The button exists on phones (≤ 768 px) and in low windows (height ≤ 560 px), and always while compact mode is on. The choice is kept in `localStorage`; a window lower than 480 px (phone held sideways) starts compact unless the user chose otherwise.
-- **Bottom panel `#controls`**: local time (Europe/Prague, CET/CEST by date) with a UTC / lead / step sub-line, playback buttons, slider, legend `#legend` (labels at their true positions), run info, credit line. Floating card on desktop, full-width sheet on phones.
+- **Bottom panel `#controls`**: local time (Europe/Prague, CET/CEST by date) with a UTC / lead sub-line, playback buttons, the time axis (see above), legend `#legend` (labels at their true positions), run info (run, resolution in degrees and km, time step), credit line. Floating card on desktop, full-width sheet on phones.
 - **Map fit**: `initApp()` measures the header and the panel and passes them to `fitBounds` as padding (`zoomSnap: 0.1`), so the domain fills the free area on any screen.
-- **Dataset switch keeps the valid time**: `autoLoadFromManifest()` remembers the time on screen and jumps to the first step at or after it once it has loaded.
-- **Lead time** is counted from `metadata.run_time`, not from the step index (the first step on the web is not always the run time).
+- **Dataset switch keeps the time**: since 2026-11-13 through `wantTime` on the fixed axis (see above).
+- **Lead time** is counted from the run of the step's own chunk (`ts.run`), not from the step index.
 - **Value box and pinned point** (tooltip.js): hovering shows the box at the cursor and a ring on the grid point the numbers come from, with the outline of its cell. A click or tap pins the point: ring and box stay, follow the map, the time slider and the dataset (`pinLL` survives `initApp()`). Click the same cell, the ✕ or Esc to release; a double click (zoom) leaves the pin alone. Rows: LAT, LON, ELEV, then TEMP, PRECIP. No box over map controls (zoom buttons).
-- **ELEV** comes from one fixed terrain layer, `terrain` in data.js: the `hgt` of the 3 km WRF grid, used for every dataset. The driver ("original") grids carry `hgt = 0` everywhere, which is why ELEV used to read 0 there. For an original dataset the value is the WRF terrain at the centre of the coarse cell, not the driver's own orography (the pipeline does not export it).
+- **ELEV**: see "Time axis, loading order, location" above. `terrain` in data.js (the `hgt` of the 3 km WRF grid) is now only the fallback for a driver grid without its own orography.
 - **Grid in memory** (`loadGrid()` in data.js): one grid object per dataset for the page visit; all WRF datasets share one object (the five `grid.json` are byte-identical, 3.1 MB, the server does not compress), so it downloads once. `loadSeq` stops a dataset load that was overtaken by a newer switch.
 - **Dataset switch keeps the map view** (centre and zoom), like it keeps the time; `fitBounds` runs on the first load only.
 - **Zoom**: Leaflet's wheel zoom is off; `initSmoothZoom()` in map.js moves a goal zoom on every wheel event and the map glides to it with the cursor point fixed (240 px of scroll per level, pinch = wheel + ctrlKey 50 px per level, Safari gesture events on a Mac). It uses Leaflet internals `_moveStart` / `_move` / `_moveEnd` (Leaflet is pinned to 1.9.4). Zoom range 3–13.
@@ -104,11 +118,28 @@ Open items, all the user's call:
 - The server sends `grid.json` (3.1 MB) uncompressed; gzip in `.htaccess` or a smaller grid file from the pipeline would speed up the first load.
 - Two logo files show as deleted in the working tree (`logo/CZU_logo_cerna.png`, `logo/logoKV.png`). That was so before this work and was left alone; both still exist in git and on the server, and the page uses them.
 
+## Work log 2026-11-13 (user's debug list)
+
+Done, in `wrf-forecast` (commit `e796f8a`, deployed on skirit) and here:
+
+1. GFS original precipitation was wrong in every second step (two APCP messages per file, the 6 h bucket first) and the first 3 h of GFS and ARPEGE were always zero. Fixed in `original_postprocess.py` by pairing messages on their step ranges; details and measured differences in the `wrf-forecast` CHANGELOG. Applies to cycles postprocessed from 2026-11-13 on.
+2. Margin around the map buttons for the value box.
+3. Fixed time axis with a loaded-data bar; the time is kept across dataset switches; loading starts at the time on screen.
+4. Driver orography exported by the pipeline (`hgt_model`) and shown as ELEV.
+5. Device location.
+6. Provider name tiles instead of logos; resolution given in degrees and km everywhere (dataset labels come from `build_web.py`; WRF stays "3 km", its Lambert grid has no step in degrees).
+7. Licence check of all sources: wording on the page matches the providers' pages; the Esri credit text was corrected.
+
+Open, the user's call:
+- E-mail to the university help desk (Ing. Tomáš Kotek, Ph.D.) about gzip and `Cache-Control` in `.htaccess` was drafted for the user on 2026-11-13; nothing was changed on the server.
+- Base map: Esri retires World Light Gray Base in December 2029, and the terms for use without an account are unclear. A base map with clear open terms would settle both.
+- Credit text in compact mode is small (11 px).
+
 ## Data flow & file format
 
 1. The HPC pipeline produces, per cycle: N chunk files named `forecast_<TAG2>_d<DOMAIN>_<CHUNK_START_ISO>.json` for WRF (6-hour chunks, e.g. `forecast_GFS_AA_20260815-18_d02_2026-08-17T00.json`) and `forecast_<TAG2>_orig_<CHUNK_START_ISO>.json` for the raw-driver "original" (~25 km) view, organized on the host into `data/<dataset_id>/` folders — 10 datasets since 2026-11-11 (8 from 2026-09-28): `gfs_wrf`, `arpege_wrf`, `icon_wrf`, `gem_wrf`, `ifs_wrf` (3 km WRF) and `gfs_original`, `arpege_original`, `icon_original`, `gem_original`, `ifs_original` (drivers sampled onto the same 0.25° 71×42 crop). Plus `manifest.json` listing the datasets. (`last_run.txt` is no longer used — triggering is cron on skirit.)
 2. Each chunk JSON has `grid` (flattened `lat`/`lon`/`hgt` arrays), `metadata` (`run_time`, `domain`, `dx_m`, `nx`, `ny`), and `timesteps[]` (each with `time` plus flattened row-major `temp_c`/`precip_mm` arrays). Precip is **`mm/h` in every dataset** — the original stream de-accumulates the raw GRIB and divides by its 3 h step so it is directly comparable to WRF. `z700_m` was removed from the pipeline entirely (the pressure layer stays disabled client-side).
-3. `index.html` on load fetches `manifest.json`, then fetches first chunk **sequentially**, initializes map immediately (progressive loading), then continues fetching remaining chunks in background while updating slider/ticks dynamically. No drag-drop fallback — removed.
+3. `index.html` on load fetches `manifest.json` and the grid, initializes the map immediately, then fetches the chunks one by one in the background, the one with the time on screen first (see "Time axis, loading order, location"). No drag-drop fallback — removed.
 4. Rendering: the overlay is a `<canvas>` placed on the Leaflet map (`CanvasOverlay` in map.js). For every canvas pixel a lookup table (`geom.warp`, js/geo.js) names the four grid points around it; the value is interpolated between them and coloured with the linear colour ramps `TEMP_STOPS`/`PREC_STOPS`, so the raster is exact on the Mercator base map (see "Georeferencing"). The grid itself comes from `data/<dataset_id>/grid.json` (`nx`, `ny`, `dx_m`, `lat`, `lon`, `hgt`), not from the chunks. A marching-squares isoline implementation exists for pressure (`z700_m`) but is fully disabled — `renderIsolinesSVG()` is a no-op and the pipeline no longer writes `z700_m`.
 
 ## GitHub Actions workflow (removed)
@@ -144,13 +175,14 @@ js/
   layers.js           ← initBoundaryLayer, initLogoOverlay, toggleBoundary (hranice ČR + logo) (85)
   geo.js              ← makeLocator (síť ↔ zeměpisná poloha, Newtonova inverze), mercY/mercLat, buildWarp (tabulka pixel → 4 body sítě)
   map.js              ← initApp, gridGeomFor, CanvasOverlay, initSmoothZoom, render (+ mrtvé marchingSquares/smooth/renderIsolinesSVG)
-  controls.js         ← setStep, pragueTime, subText, leadHours, fmtRun, sliderFill, go, togglePlay, cycleSpeed, setVar, updateLegend, setCompact/toggleCompact/initCompact, buildTicks, updateSliderMax
-  tooltip.js          ← probe, elevAt, onHover, onMapClick, setPin/unpin/restorePin, refreshTip, placePinnedTip
+  controls.js         ← initAxis, setTime, showTime, go, stepBy, setStep, timesChanged, drawCover, buildTicks, pragueTime, subText, leadHours, fmtRun, togglePlay, cycleSpeed, setVar, updateLegend, setCompact/toggleCompact/initCompact
+  tooltip.js          ← probe, elevAt, nearMapControl, onHover, onMapClick, setPin/unpin/restorePin, refreshTip, placePinnedTip
+  locate.js           ← initLocate, toggleLocate, drawMyPos, toast (poloha zařízení)
   app.js              ← keyboard listener (15)
 ```
 
 ### Pořadí `<script>` v index.html — KRITICKÉ, zachovat
-`leaflet CDN → colors → data → datasets → layers → boundaries → geo → map → controls → tooltip → credits → hlavní <script> (STATE/COLORMAPS/toggleIsolines) → app.js (poslední)`. `map.js` volá `L.ImageOverlay.extend` už při načtení, takže Leaflet musí být načten před ním.
+`leaflet CDN → colors → data → datasets → layers → boundaries → geo → map → controls → tooltip → locate → credits → hlavní <script> (STATE/COLORMAPS/toggleIsolines) → app.js (poslední)`. `map.js` volá `L.ImageOverlay.extend` už při načtení, takže Leaflet musí být načten před ním.
 
 Důvod: všechny moduly **sdílejí globální stav z hlavního `<script>` bloku** a odkazují na sebe navzájem. Nepoužívají ES moduly (`type="module"`), ale **klasické globální funkce** — každý modul je `<script src="...">` načtený jako globál a volá ostatní **až za běhu**, takže stačí, aby definice existovaly dřív, než se daná funkce skutečně zavolá. `app.js` je záměrně **poslední** (za hlavním blokem), protože registruje keyboard listener volající funkce všech modulů.
 
@@ -162,8 +194,8 @@ Další globály z data.js: `currentDataset`, `currentManifest`, `terrain` (pevn
 ### Zápisky k modulům
 - **data.js** volá `initApp()` (map.js) po načtení PRVNÍHO chunku (progresivní načítání); čte/píše `allTimesteps`, `gridData`, `metadata`. Obsahuje `switchDataset(datasetId)` pro přepínání mezi datasety a `buildFilePath()` pro skládání cest z `path_prefix`.
 - **datasets.js** — `initDatasetSwitcher(manifest)` buduje select element dynamicky z `manifest.datasets`; `updateDatasetSwitcher()` refreshne po změně datasetu.
-- **map.js** — `initApp` (spouští ho data.js po načtení gridu) vytváří `map`/`offCanvas`/`imgOv`/`isoSvg`/`geom` a volá `buildTicks`/`setStep(0)`/`updateLegend`/`restorePin`; `offCanvas` je přímo element překryvné vrstvy (`CanvasOverlay`), `render` do něj maluje přes `putImageData` (žádné `toDataURL`), barvy bere z `makeShader` (colors.js) a polohu z `geom.warp` (geo.js).
-- **controls.js** čte/píše `step`/`varName`/`playing`/`playTmr`/`spdIdx` a `TEMP_STOPS`/`PREC_STOPS`; volá `render()` (map.js). Obsahuje `updateSliderMax()` pro progresivní aktualizaci slideru.
+- **map.js** — `initApp` (spouští ho data.js po načtení gridu) vytváří `map`/`offCanvas`/`imgOv`/`isoSvg`/`geom` a volá `updateLegend`/`restorePin`/`showTime`/`drawCover`/`initLocate`; `offCanvas` je přímo element překryvné vrstvy (`CanvasOverlay`), `render` do něj maluje přes `putImageData` (žádné `toDataURL`), barvy bere z `makeShader` (colors.js) a polohu z `geom.warp` (geo.js).
+- **controls.js** čte/píše `step`/`varName`/`playing`/`playTmr`/`spdIdx` a `TEMP_STOPS`/`PREC_STOPS`; volá `render()` (map.js). Drží pevnou časovou osu (`axis`, `wantTime`, `stepTimes`, `cover`); `timesChanged()` volá data.js po každém načteném chunku.
 - **tooltip.js** čte `allTimesteps`/`gridData`/`step`/`map`/`geom`/`terrain`; `initApp` registruje `onHover` (mousemove), `onMapClick` (click), `onMapDblClick`, `hideHover` (mouseout) a `placePinnedTip` (move/zoom). `setStep` volá `refreshTip`.
 - **app.js** (keyboard) odkazuje na `allTimesteps` + `go`/`togglePlay`/`setVar`/`toggleIsolines`.
 
@@ -184,7 +216,7 @@ Zpětná kompatibilita: starý manifest bez `datasets` pole se automaticky obal�
 ### Progresivní načítání (nově 2026-08-18)
 - Mapa se inicializuje PO PRVNÍM CHUNKU — uživatel okamžitě vidí něco na mapě.
 - Zbývající chunky se stahují na pozadí a průběžně se přidávají do `allTimesteps`.
-- Slider max a ticks se aktualizují přes `updateSliderMax()` a `buildTicks()` při každém novém chunku.
+- Od 2026-11-13 je osa pevná: po každém chunku se volá `timesChanged()` a `drawCover()` (pruh načtení), chunky se stahují od času na obrazovce.
 - Loader (#prog) se skryje po první inicializaci mapy.
 
 ### Odstraněno (2026-08-18)

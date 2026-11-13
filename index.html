@@ -8,7 +8,7 @@
 <title>WRF Forecast Viewer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=8"/>
+<link rel="stylesheet" href="css/style.css?v=9"/>
 <script>
 // Stale-page guard. The server sends no Cache-Control for this file, so a
 // browser may keep showing an old copy for days after a deploy. Ask the server
@@ -45,9 +45,8 @@ window.freshCheck();
 
 <div id="map"></div>
 
-<!-- Small "loading more" pill shown while background chunks stream in after the
-     map is already visible (keeps the map view clean). -->
-<div id="moreprog">LOADING MORE…</div>
+<!-- Short messages (location errors and the like), js/locate.js toast(). -->
+<div id="toast" role="status"></div>
 
 <!-- Header: brand, dataset, variable, data-source chip. -->
 <div id="topbar">
@@ -78,8 +77,12 @@ window.freshCheck();
 
 <!-- About + data-source attribution required by the providers' licences (js/credits.js). -->
 <div id="credits" role="dialog" aria-label="About, data sources and licences">
-  <button class="cr-close" onclick="toggleCredits(false)" title="Close" aria-label="Close">&#x2715;</button>
-  <div class="cr-title">About this forecast</div>
+  <!-- The title bar stays on top while the panel scrolls, so the close button
+       never covers the text. -->
+  <div class="cr-bar">
+    <div class="cr-title">About this forecast</div>
+    <button class="cr-close" onclick="toggleCredits(false)" title="Close" aria-label="Close">&#x2715;</button>
+  </div>
   <div class="cr-intro">
     Datasets named "+ WRF (3 km)" are forecasts of the WRF model computed at the
     Czech University of Life Sciences Prague; the global model named in the dataset
@@ -88,11 +91,20 @@ window.freshCheck();
     this map. In both cases the source data were modified; nothing shown here is an
     official product of the providers below, and they do not endorse this service.
   </div>
+  <div class="cr-intro">
+    The time axis is the same for every dataset: five days from today's 00 UTC.
+    The shaded part shows where the chosen dataset has a forecast, the darker part
+    what is already loaded. ELEV in the value box is the terrain height of the
+    model on screen, i.e. the 3 km WRF terrain or the coarser terrain of the global
+    model. Your location, if you turn it on, is used only in your browser to mark
+    the place on the map; it is not sent anywhere.
+  </div>
   <div class="cr-title">Data sources and licences</div>
   <div id="credits-body"></div>
   <div class="cr-item">
     <div class="cr-name">Base map</div>
-    <div class="cr-text">Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics</div>
+    <div class="cr-prod">World Light Gray Base</div>
+    <div class="cr-text">Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>. Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community.</div>
   </div>
   <div class="cr-logos">
     <a class="brand-logo" href="https://www.fzp.czu.cz/en" target="_blank" rel="noopener" title="Faculty of Environmental Sciences, Czech University of Life Sciences Prague"><img src="logo/CZU_logo_cerna.png" alt="Czech University of Life Sciences Prague"></a>
@@ -113,18 +125,26 @@ window.freshCheck();
     </button>
     <div class="btn-group">
       <button class="cbtn" onclick="go(-6)" title="Back 6 hours">&minus;6h</button>
-      <button class="cbtn" onclick="go(-1)" title="Back 1 hour">&minus;1h</button>
+      <button class="cbtn" id="btn-prev" onclick="stepBy(-1)" title="Previous step">&minus;1h</button>
       <button class="cbtn play" id="playbtn" onclick="togglePlay()" title="Play / pause" aria-label="Play or pause">
         <svg class="ic-play" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
         <svg class="ic-pause" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z" fill="currentColor"/></svg>
       </button>
-      <button class="cbtn" onclick="go(1)" title="Forward 1 hour">+1h</button>
+      <button class="cbtn" id="btn-next" onclick="stepBy(1)" title="Next step">+1h</button>
       <button class="cbtn" onclick="go(6)" title="Forward 6 hours">+6h</button>
       <button class="cbtn spd" id="spd" onclick="cycleSpeed()" title="Playback speed">1×</button>
     </div>
   </div>
+  <!-- Fixed time axis (controls.js): five days from today's 00 UTC, the same
+       for every dataset. The track shows where the dataset has a forecast
+       (#trk-data), what is loaded (#trk-loaded) and the present moment (#trk-now). -->
   <div class="slider-wrap">
-    <input type="range" id="slider" min="0" value="0" step="1" aria-label="Forecast time" oninput="setStep(+this.value)"/>
+    <div class="track" id="track">
+      <div class="trk-data" id="trk-data" title="Forecast of this dataset"></div>
+      <div id="trk-loaded"></div>
+      <div class="trk-now" id="trk-now" title="Now"></div>
+    </div>
+    <input type="range" id="slider" min="0" max="120" value="0" step="1" aria-label="Forecast time" oninput="onSlider(+this.value)"/>
     <div class="ticks" id="ticks"></div>
   </div>
   <div class="panel-foot">
@@ -135,32 +155,32 @@ window.freshCheck();
     </div>
     <div class="runinfo">
       <span>Run <span id="m-run">—</span></span>
-      <span class="opt"> · <span id="m-dom">—</span></span>
-      <span class="opt"> · <span id="m-dx">—</span></span>
-      <span class="opt"> · <span id="m-n">—</span> steps</span>
+      <span class="opt"> · <span id="m-res">—</span></span>
+      <span class="opt"> · every <span id="m-every">—</span></span>
     </div>
   </div>
   <div class="credit-line">
     <span id="credit-text">—</span>
-    Base map &copy; Esri.
+    Base map: Esri.
     <button class="credit-link" onclick="toggleCredits()">Sources and licences</button>
   </div>
   <!-- Compact mode: the credit shrinks to one line and stays on screen. -->
-  <button class="credit-short" id="credit-short" onclick="toggleCredits()" title="About, data sources and licences"><span id="credit-short-text">Data: —</span> · Base map &copy; Esri</button>
+  <button class="credit-short" id="credit-short" onclick="toggleCredits()" title="About, data sources and licences"><span id="credit-short-text">Data: —</span> · Base map: Esri</button>
 </div>
 
 <div id="tip"></div>
 
 <script src="js/colors.js?v=2"></script>
-<script src="js/data.js?v=3"></script>
+<script src="js/data.js?v=4"></script>
 <script src="js/datasets.js"></script>
 <script src="js/layers.js"></script>
 <script src="js/boundaries.js?v=3"></script>
 <script src="js/geo.js?v=1"></script>
-<script src="js/map.js?v=10"></script>
-<script src="js/controls.js?v=3"></script>
-<script src="js/tooltip.js?v=3"></script>
-<script src="js/credits.js?v=3"></script>
+<script src="js/map.js?v=11"></script>
+<script src="js/controls.js?v=4"></script>
+<script src="js/tooltip.js?v=4"></script>
+<script src="js/locate.js?v=1"></script>
+<script src="js/credits.js?v=4"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════════════
 //  STATE
@@ -225,6 +245,6 @@ function toggleIsolines(){
 
 
 </script>
-<script src="js/app.js?v=2"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>
