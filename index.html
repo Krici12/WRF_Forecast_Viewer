@@ -8,7 +8,7 @@
 <title>WRF Forecast Viewer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=9"/>
+<link rel="stylesheet" href="css/style.css?v=13"/>
 <script>
 // Stale-page guard. The server sends no Cache-Control for this file, so a
 // browser may keep showing an old copy for days after a deploy. Ask the server
@@ -56,9 +56,13 @@ window.freshCheck();
     <div class="brand-text">
       <span class="brand-title">WRF Forecast</span>
       <span class="brand-sub">Faculty of Environmental Sciences · Czech University of Life Sciences Prague</span>
+      <!-- Narrow windows: the model run under the title (wide ones: #run-chip). -->
+      <span class="brand-run">Run <span class="run-txt">—</span></span>
     </div>
   </div>
   <div class="top-tools">
+    <!-- Initial time of the model run on the map (controls.js showRun). -->
+    <span class="run-chip" id="run-chip">Run <span class="run-txt" id="m-run">—</span></span>
     <select id="dataset-switcher" class="dataset-select" aria-label="Dataset" disabled></select>
     <div id="layers" role="group" aria-label="Variable">
       <button class="lbtn active" id="btn-t" onclick="setVar('temp_c')" title="2 m temperature">
@@ -94,10 +98,17 @@ window.freshCheck();
   <div class="cr-intro">
     The time axis is the same for every dataset: five days from today's 00 UTC.
     The shaded part shows where the chosen dataset has a forecast, the darker part
-    what is already loaded. ELEV in the value box is the terrain height of the
+    what is already loaded. "Run" in the header is the initial time of the model
+    run on the map. ELEV in the value box is the terrain height of the
     model on screen, i.e. the 3 km WRF terrain or the coarser terrain of the global
     model. Your location, if you turn it on, is used only in your browser to mark
     the place on the map; it is not sent anywhere.
+  </div>
+  <div class="cr-intro">
+    Click the map to pin a grid point, then "Compare models" in its box: the
+    charts show 2 m temperature and precipitation at that place from every WRF
+    run (solid lines) and every global model (dashed lines), each read at its
+    own grid point.
   </div>
   <div class="cr-title">Data sources and licences</div>
   <div id="credits-body"></div>
@@ -112,7 +123,28 @@ window.freshCheck();
   </div>
 </div>
 
-<!-- Bottom panel: time, playback, slider, legend, run info, credit line. -->
+<!-- All models at the pinned point (js/ensemble.js). -->
+<div id="ens" role="dialog" aria-label="All models at this point">
+  <div class="ens-bar">
+    <div>
+      <div class="ens-title">All models at this point</div>
+      <div class="ens-sub" id="ens-sub">&nbsp;</div>
+    </div>
+    <div class="ens-prog" id="ens-prog"></div>
+    <button class="ens-close" onclick="closeEnsemble()" title="Close (Esc)" aria-label="Close">&#x2715;</button>
+  </div>
+  <!-- Phones: the button that loads the other WRF runs (ensemble.js ensFoot). -->
+  <div id="ens-ask"></div>
+  <div class="ens-ctitle">2 m temperature <span>°C</span></div>
+  <svg class="ens-svg t" id="ens-t" role="img" aria-label="2 m temperature of all models at this point"></svg>
+  <div class="ens-ctitle">Precipitation <span>mm/h</span></div>
+  <svg class="ens-svg p" id="ens-p" role="img" aria-label="Precipitation of all models at this point"></svg>
+  <div class="ens-when" id="ens-when">&nbsp;</div>
+  <div id="ens-table"></div>
+  <div id="ens-foot"></div>
+</div>
+
+<!-- Bottom panel: time, playback, slider, legend, credit line. -->
 <div id="controls">
   <div class="ctrl-row">
     <div class="time-block">
@@ -149,20 +181,17 @@ window.freshCheck();
   </div>
   <div class="panel-foot">
     <div id="legend">
-      <div class="leg-title" id="leg-title">2 m temperature [°C]</div>
-      <div class="leg-bar"   id="leg-bar"></div>
-      <div class="leg-labs"  id="leg-labs"></div>
+      <div class="leg-title" id="leg-title">°C</div>
+      <div class="leg-main">
+        <div class="leg-bar"   id="leg-bar"></div>
+        <div class="leg-labs"  id="leg-labs"></div>
+      </div>
     </div>
-    <div class="runinfo">
-      <span>Run <span id="m-run">—</span></span>
-      <span class="opt"> · <span id="m-res">—</span></span>
-      <span class="opt"> · every <span id="m-every">—</span></span>
+    <div class="credit-line">
+      <span id="credit-text">—</span>
+      Base map: Esri.
+      <button class="credit-link" onclick="toggleCredits()">Sources and licences</button>
     </div>
-  </div>
-  <div class="credit-line">
-    <span id="credit-text">—</span>
-    Base map: Esri.
-    <button class="credit-link" onclick="toggleCredits()">Sources and licences</button>
   </div>
   <!-- Compact mode: the credit shrinks to one line and stays on screen. -->
   <button class="credit-short" id="credit-short" onclick="toggleCredits()" title="About, data sources and licences"><span id="credit-short-text">Data: —</span> · Base map: Esri</button>
@@ -171,16 +200,17 @@ window.freshCheck();
 <div id="tip"></div>
 
 <script src="js/colors.js?v=2"></script>
-<script src="js/data.js?v=4"></script>
+<script src="js/data.js?v=5"></script>
 <script src="js/datasets.js"></script>
 <script src="js/layers.js"></script>
 <script src="js/boundaries.js?v=3"></script>
 <script src="js/geo.js?v=1"></script>
-<script src="js/map.js?v=11"></script>
-<script src="js/controls.js?v=4"></script>
-<script src="js/tooltip.js?v=4"></script>
+<script src="js/map.js?v=12"></script>
+<script src="js/controls.js?v=5"></script>
+<script src="js/tooltip.js?v=5"></script>
+<script src="js/ensemble.js?v=4"></script>
 <script src="js/locate.js?v=1"></script>
-<script src="js/credits.js?v=4"></script>
+<script src="js/credits.js?v=5"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════════════
 //  STATE

@@ -69,7 +69,7 @@ function initApp(){
   document.getElementById('topbar').style.display='flex';
   document.getElementById('layers').style.display='flex';
   document.getElementById('controls').style.display='flex';
-  document.getElementById('legend').style.display='block';
+  document.getElementById('legend').style.display='flex';
 
   syncTop();
 

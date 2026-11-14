@@ -1,0 +1,41 @@
+# Presmerovani na HTTPS, prosim neprepisovat!
+############################################ 
+<IfModule rewrite_module>
+    RewriteEngine On
+    
+    RewriteCond %{REQUEST_URI} ^/\.well-known/pki-validation/(?:\ Ballot169)? [OR]
+    RewriteCond %{REQUEST_URI} ^/\.well-known/pki-validation/[A-F0-9]{32}\.txt(?:\ Sectigo\ DCV)?$ [OR]
+    RewriteCond %{REQUEST_URI} ^/\.well-known/cpanel-dcv/[0-9a-zA-Z_-]+$ [OR]
+    RewriteCond %{REQUEST_URI} ^/\.well-known/acme-challenge/[0-9a-zA-Z_-]+$ 
+    RewriteRule ^ - [END]
+    
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+############################################ 
+# Zakázat prohlížení adresářů
+Options -Indexes
+
+############################################
+# Pridano 2026-11-13 (V. Kricnar, po dohode s T. Kotkem). Puvodni soubor je
+# zalohovan v ~/htaccess.backup-2026-11-13 (mimo public_html).
+#
+# 1) Komprese textovych souboru pri prenosu (data predpovedi jsou JSON,
+#    grid.json ma 3 MB). Brotli, pokud ho server umi, jinak gzip.
+<IfModule mod_filter.c>
+    <IfModule mod_brotli.c>
+        AddOutputFilterByType BROTLI_COMPRESS text/html text/css text/plain text/javascript application/javascript application/json application/geo+json image/svg+xml
+    </IfModule>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/html text/css text/plain text/javascript application/javascript application/json application/geo+json image/svg+xml
+    </IfModule>
+</IfModule>
+
+# 2) index.html a manifest.json: prohlizec si pred kazdym pouzitim overi u
+#    serveru, ze ma aktualni verzi (jinak ukazuje i nekolik dni starou stranku).
+<IfModule mod_headers.c>
+    <FilesMatch "^(index\.html|manifest\.json)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>

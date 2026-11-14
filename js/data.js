@@ -237,8 +237,8 @@ async function autoLoadFromManifest(manifest, dataset) {
       nx:     (g && g.nx)   ? g.nx   : (dataset.grid ? dataset.grid.nx   : 0),
       ny:     (g && g.ny)   ? g.ny   : (dataset.grid ? dataset.grid.ny   : 0),
     };
-    document.getElementById('m-run').textContent = '—';
-    document.getElementById('m-res').textContent = resText(dataset, g);
+    resLabel = resText(dataset, g);    // controls.js: tooltip of the run in the header
+    showRun(null);
 
     // 2) Show the map immediately; the chunks load in the background.
     initApp();

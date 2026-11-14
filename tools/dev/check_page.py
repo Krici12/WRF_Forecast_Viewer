@@ -89,12 +89,12 @@ info = """JSON.stringify({
   topbar: %(R)s('#topbar'), brand: %(R)s('.brand'), sub: %(R)s('.brand-sub'), logo: %(R)s('.brand-logo'),
   logoLoaded: document.querySelector('.brand-logo img').naturalWidth,
   select: %(R)s('#dataset-switcher'), layers: %(R)s('#layers'), chip: %(R)s('#m-src'),
-  controls: %(R)s('#controls'), timeBlock: %(R)s('.time-block'), btns: %(R)s('.btn-group'), legend: %(R)s('#legend'), runinfo: %(R)s('.runinfo'), credit: %(R)s('.credit-line'),
+  controls: %(R)s('#controls'), timeBlock: %(R)s('.time-block'), btns: %(R)s('.btn-group'), legend: %(R)s('#legend'), runChip: %(R)s('#run-chip'), brandRun: %(R)s('.brand-run'), credit: %(R)s('.credit-line'),
   kv: %(R)s('.brand-kv'), zoom: %(R)s('.leaflet-control-zoom'), attr: %(R)s('.leaflet-control-attribution'),
   domain: %(R)s(imgOv.getElement()), zoomLevel: map.getZoom(),
   time: document.getElementById('t-display').innerText.replace(/\\n/g,' '), tsub: document.getElementById('t-sub').textContent,
   chipText: document.getElementById('m-src').textContent, creditText: document.querySelector('.credit-line').innerText,
-  run: document.querySelector('.runinfo').innerText, legTitle: document.getElementById('leg-title').textContent,
+  run: document.getElementById('m-run').textContent, runTip: document.getElementById('run-chip').title, legTitle: document.getElementById('leg-title').textContent,
   legLabs: document.getElementById('leg-labs').innerText.replace(/\\n/g,' '),
   dataset: currentDataset && currentDataset.id, options: [...document.getElementById('dataset-switcher').options].map(o=>o.textContent),
   steps: allTimesteps.length, terrain: !!terrain, hgtModel: gridData.hgt_model===true,
@@ -119,6 +119,32 @@ print("SPEED ", ev("JSON.stringify({spd: document.getElementById('spd').textCont
 ev("setVar('temp_c')")
 ev("(()=>{const r=imgOv.getElement().getBoundingClientRect(); const x=r.left+r.width*0.5, y=r.top+r.height*0.5; map.fire('click',{latlng: map.containerPointToLatLng([x,y]), originalEvent:{clientX:x, clientY:y}});})()"); time.sleep(0.5)
 print("TIP   ", ev("JSON.stringify({rect: %s('#tip'), pinned: !!pinInfo, marker: %s('.probe-dot'), text: document.getElementById('tip').innerText.replace(/\\n/g,' ')})" % (R, R))); shot("tip")
+# "Compare models" (js/ensemble.js): all datasets at the pinned point.
+ens_state = """JSON.stringify({rect: %(R)s('#ens'), svgT: %(R)s('#ens-t'), svgP: %(R)s('#ens-p'), sub: document.getElementById('ens-sub').textContent,
+  members: ens.members.map(m=>m.id+':'+m.state+':'+(m.store?m.store.files.size:0)+'/'+m.files.length+':'+(m.store?m.store.pts.size:0)+'pts'),
+  lines: [document.querySelectorAll('#ens-t .eg-line').length, document.querySelectorAll('#ens-p .eg-line').length],
+  when: document.getElementById('ens-when').innerText, scroll: (e=>[e.scrollWidth,e.clientWidth,e.scrollHeight,e.clientHeight])(document.getElementById('ens')), chartH: [ens.th, ens.ph], table: document.getElementById('ens-table').innerText.replace(/\\s+/g,' '), foot: document.getElementById('ens-foot').innerText.replace(/\\s+/g,' ').slice(0,160),
+  queue: ens.queue.length, busy: ens.busy, sw: document.documentElement.scrollWidth})""" % {"R": R}
+ev("document.querySelector('#tip .tip-more').click()"); time.sleep(6)
+print("ENS   ", ev(ens_state)); shot("ens")
+if ev("ens.members.some(m=>m.state==='held')"):
+    shot("ens_held"); ev("document.querySelector('.ens-load').click()")
+for _ in range(60):
+    time.sleep(3)
+    if ev("ens.members.every(m=>m.state==='done'||m.state==='out'||m.state==='error')"): break
+print("ENS2  ", ev(ens_state))
+# The live dataset's line must equal what the map has; hover fills the table; a click moves the map time.
+print("ENSCHK", ev("""JSON.stringify((()=>{const m=ens.members.find(x=>x.live),s=ensSeries(m);let bad=0;
+  allTimesteps.forEach(ts=>{const q=m.store.pts.get(ts.ms);if(!q||q.t!==ts.temp_c[pinInfo.k]||q.p!==ts.precip_mm[pinInfo.k])bad++;});
+  const svg=document.getElementById('ens-t'),r=svg.getBoundingClientRect(),x=r.left+r.width*0.6;
+  svg.dispatchEvent(new PointerEvent('pointermove',{clientX:x,clientY:r.top+20,bubbles:true}));ensDraw();
+  const hov={t:new Date(ens.hoverT).toISOString().slice(0,16),dots:document.querySelectorAll('#ens-t .eg-dot').length,when:document.getElementById('ens-when').innerText};
+  svg.dispatchEvent(new MouseEvent('click',{clientX:x,clientY:r.top+20,bubbles:true}));
+  return {liveSteps:s.length,mapSteps:allTimesteps.length,mismatch:bad,hover:hov,afterClick:allTimesteps[step].time.slice(0,16),
+          sameK:ens.members.filter(x=>x.stage==='wrf').map(x=>x.k).join(',')};})())"""))
+time.sleep(0.5); shot("ens2")
+ev("ensToggle('GFS')"); time.sleep(0.4); print("ENSOFF", ev("JSON.stringify([document.querySelectorAll('#ens-t .eg-line').length, document.querySelectorAll('.ens-tab tr.off').length])")); ev("ensToggle('GFS')")
+ev("closeEnsemble()")
 ev("unpin()")
 # Value box near the zoom buttons: 20 px left of them it must stay hidden, 80 px left it shows.
 print("MARGIN", ev("""JSON.stringify((()=>{const z=document.querySelector('.leaflet-control-zoom'),r=z.getBoundingClientRect();

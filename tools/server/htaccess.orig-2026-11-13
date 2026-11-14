@@ -1,0 +1,18 @@
+# Presmerovani na HTTPS, prosim neprepisovat!
+############################################ 
+<IfModule rewrite_module>
+    RewriteEngine On
+    
+    RewriteCond %{REQUEST_URI} ^/\.well-known/pki-validation/(?:\ Ballot169)? [OR]
+    RewriteCond %{REQUEST_URI} ^/\.well-known/pki-validation/[A-F0-9]{32}\.txt(?:\ Sectigo\ DCV)?$ [OR]
+    RewriteCond %{REQUEST_URI} ^/\.well-known/cpanel-dcv/[0-9a-zA-Z_-]+$ [OR]
+    RewriteCond %{REQUEST_URI} ^/\.well-known/acme-challenge/[0-9a-zA-Z_-]+$ 
+    RewriteRule ^ - [END]
+    
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+############################################ 
+# Zakázat prohlížení adresářů
+Options -Indexes

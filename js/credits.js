@@ -147,11 +147,12 @@ function updateCredits(){
 }
 
 document.addEventListener('DOMContentLoaded', buildCreditsPanel);
-// Esc closes the About panel; with the panel closed it releases the pinned
-// point on the map (js/tooltip.js).
+// Esc closes the About panel, else the "all models" panel (js/ensemble.js),
+// else it releases the pinned point on the map (js/tooltip.js).
 document.addEventListener('keydown', e => {
   if(e.key !== 'Escape') return;
   const p = document.getElementById('credits');
   if(p && p.style.display === 'block') toggleCredits(false);
+  else if(typeof ens !== 'undefined' && ens.open) closeEnsemble();
   else if(typeof unpin === 'function') unpin();
 });

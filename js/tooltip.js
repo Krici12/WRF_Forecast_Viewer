@@ -81,7 +81,9 @@ function tipHtml(info,pinned){
     <div class="tsep"></div>
     <div class="tr"><span class="tk">TEMP</span><span class="tv" style="color:${tc}">${ts?(ok(t)?t.toFixed(1).replace(/^-0\.0$/,'0.0')+' °C':'N/A'):'…'}</span></div>
     <div class="tr"><span class="tk">PRECIP</span><span class="tv" style="color:#0969da">${ts?(ok(p)?p.toFixed(2)+' mm·h⁻¹':'N/A'):'…'}</span></div>
-  `;
+  `+(pinned?'<button class="tip-more" onclick="openEnsemble()" title="Temperature and precipitation at this place from every WRF run and every global model">'+
+     '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.5 12.5l3.6-5 3 2.6 3.2-6 3.2 4.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'+
+     'Compare models</button>':'');
 }
 
 // Ring at the grid point plus the outline of its cell.
@@ -164,6 +166,7 @@ function setPin(info){
   tip.innerHTML=tipHtml(info,true);
   tip.style.display='block';
   placePinnedTip();
+  if(typeof ensPinChanged==='function')ensPinChanged();   // "all models" panel follows the pin
 }
 
 function unpin(){
@@ -172,6 +175,7 @@ function unpin(){
   const tip=document.getElementById('tip');
   tip.classList.remove('pinned');
   tip.style.display='none';
+  if(typeof closeEnsemble==='function')closeEnsemble();
 }
 
 // After a dataset switch the map is rebuilt: pin the same place again, on

@@ -45,12 +45,28 @@ rclone sync --progress \
 
 2. **Forecast data** (`data/<dataset_id>/` + `manifest.json`) — produced by the HPC pipeline into `web-stage/` and uploaded to `public_html/` **automatically** at the end of every `postprocess_job.sh` (`wrf-forecast`'s `scripts/common/publish_cpanel.sh`, SSH/SFTP to the help-desk IP `89.233.145.252` as `weatherforecastf`; `manifest.json` goes last, stale `data/*.json` are removed). Web builds of all models are serialized by `state/web_build.lock` on Metacentrum. Never deploy `data/` or `manifest.json` from this repo.
 
+3. **Server settings** (`public_html/.htaccess`) — since 2026-11-13 the file carries, after the university's own block (HTTPS redirect, `Options -Indexes`; both must stay, Ing. Tomáš Kotek, Ph.D. of the help desk agreed to our additions by e-mail on 2026-11-13): compression of text files (`AddOutputFilterByType DEFLATE`, brotli if the server has it) and `Cache-Control: no-cache` for `index.html` and `manifest.json`. Measured after the change: `grid.json` 3.1 MB → 0.95 MB, a WRF chunk 8.1 MB → 1.5 MB, `index.html` 13 kB → 4 kB on the wire. A copy of the live file is `tools/server/htaccess`, the file as it was before is `tools/server/htaccess.orig-2026-11-13` and, on the cPanel account, `~/htaccess.backup-2026-11-13` (outside `public_html`). No script uploads `.htaccess`; change it by hand through skirit (the route of `deploy_frontend.sh`), test every page for HTTP 200 right after and put the backup back if anything fails.
+
 - `czuweb` is a preconfigured rclone SFTP remote (`~/.config/rclone/rclone.conf`) pointing at the `czu-web` SSH alias (`srv.cpanel-czu.cz`, domain `weather-forecast.fzp.czu.cz`).
 - **Always keep the `.htaccess` / `.ftpquota` / `cgi-bin/**` / `.well-known/**` excludes.** `rclone sync` mirrors exactly and will delete anything on the remote that isn't in the local tree — those paths are cPanel/SSL-validation infrastructure, and dropping them breaks HTTPS redirects and future cert renewal. Always run with `--dry-run` first when changing the exclude list.
 
 ## Data-source credits (licence requirement)
 
 `js/credits.js` holds the attribution each data provider's licence requires, keyed by the dataset's `model` in `manifest.json` (GFS, ARPEGE, ICON, GEM, IFS). The wording was copied from the providers' licence pages on 2026-11-10 (URLs in the file header); do not reword it. Three places show it: the `Data: <provider>` chip in the header (`#m-src`; phones show only the provider), the About panel it opens (`#credits`, all providers + base map + logos), and the always-visible credit line at the bottom of the control panel (`#credit-text`, the provider's full statement for the driver on the map, on phones too). In compact mode (see Layout) the full line is replaced by the one-line `#credit-short` ("Data: <provider> · Base map © Esri", opens the About panel), so a credit is on screen in every state. The Leaflet attribution line carries only the Esri tile credit and is hidden below 1240 px, where the panel would cover it (Esri is in the credit line). `updateCredits()` runs from `initApp()` after every dataset switch. A new driver needs a new `CREDITS` entry before its data go public; ECMWF (IFS) in particular requires the sentence "This service is based on data and products of the European Centre for Medium-Range Weather Forecasts (ECMWF)", the source, the CC BY 4.0 statement and the disclaimer.
+
+## All models at one point (js/ensemble.js, 2026-11-14)
+
+- The pinned value box has a **Compare models** button (`.tip-more`). It opens `#ens`: two SVG charts (2 m temperature, precipitation) over the fixed time axis, one line per dataset of the manifest, and a table with the values at the time under the cursor or on the map. Colour = global model (`ENS_COL`: GFS teal, ARPEGE red, ICON amber, GEM violet, IFS slate; checked for colour-blind vision, numbers in the file header), line style = stage (WRF solid, global model dashed), the dataset on the map is thicker and its table cells are highlighted. A row of the table toggles a model; a click on a chart calls `setTime()`.
+- **Nothing is interpolated.** Every dataset is read at its own grid point whose cell contains `pinLL`; the table gives the member's own step nearest to the time (temperature) or the step whose interval holds it (precipitation, drawn as a step line because the value is a mean rate over the step ending at that time).
+- **Loading.** The dataset on the map comes from `allTimesteps` (`ensMergeLive`, called from `timesChanged`). The others are read file by file in `js/series-worker.js`, which keeps one grid point and drops the rest; results live in `ensStore` (`dataset|k`) for the page visit. Global models are small (about 12 kB per file on the wire) and always load. The other WRF runs are about 1.5 MB per file on the wire, some 110 MB for four runs: on phones (≤ 768 px) and with the browser's data saver they wait for the button "Load the other WRF runs (about N MB)" at the top of the panel (`#ens-ask`, `ensLoadWrf`), elsewhere they load by themselves, four files at a time, the files around the time on screen first. Closing the panel stops new downloads.
+- **Layout.** Desktop: card on the left under the header, ending above the bottom panel; `ensFit()` gives the charts the height that is left (in a window too low for it, class `tight` hides the note), `ensMakeRoom()` pans the map so the pinned point is not under the card. Phones: full screen. Esc closes the panel first, then releases the pin; releasing the pin closes the panel; a new pin or a dataset switch rebuilds it (`ensPinChanged` from `setPin`).
+- **Open, the user's call:** a per-tile series file written by the pipeline (`wrf-forecast`, `build_web.py`) would turn the 110 MB into one small request per dataset and make the WRF lines instant on phones. Only the reader (`ensPrepare` / `ensRead`) would change.
+
+## Header and panel, slimmer (2026-11-14)
+
+- The **model run** left the bottom panel: `showRun()` (controls.js) writes "13 Nov 00 UTC" to every `.run-txt`: next to the dataset select (`#run-chip`, windows wider than 1240 px) and under the title (`.brand-run`, narrower windows and phones). The full run time, the resolution (`resLabel`, from data.js `resText`) and the time step are in its tooltip.
+- The line under the time is "00:00 UTC · +24 h" (UTC hour and lead time; the date and the word "run" were dropped).
+- The **legend** is a slim strip (unit label, 8 px bar, small numbers), 300 px wide on desktop with the credit line beside it in `.panel-foot`, full width above the credit on phones. The variable name is not repeated (it is on the switch in the header). The `.runinfo` row is gone.
 
 ## Time axis, loading order, location (2026-11-13)
 
@@ -70,7 +86,7 @@ rclone sync --progress \
 
 - **Header `#topbar`** (full width, solid white): ČZU logo (link to https://www.fzp.czu.cz/en) and Chytrá krajina 2030+ logo (`.brand-kv`, link to https://www.chytra-krajina.cz) + title, dataset select, variable switch `#layers` (segmented, short labels on phones), credit chip (inline SVG "i" icon, centred by geometry). Two rows on phones (≤ 768 px). The header is solid white because `logo/logoKV.png` has an opaque white background.
 - **Compact mode** (`body.compact`, `setCompact()` / `toggleCompact()` / `initCompact()` in controls.js): the chevron button `#compact-btn` in the bottom panel hides the header and everything in the panel except play, the time, the slider with its day ticks and the one-line credit. The button exists on phones (≤ 768 px) and in low windows (height ≤ 560 px), and always while compact mode is on. The choice is kept in `localStorage`; a window lower than 480 px (phone held sideways) starts compact unless the user chose otherwise.
-- **Bottom panel `#controls`**: local time (Europe/Prague, CET/CEST by date) with a UTC / lead sub-line, playback buttons, the time axis (see above), legend `#legend` (labels at their true positions), run info (run, resolution in degrees and km, time step), credit line. Floating card on desktop, full-width sheet on phones.
+- **Bottom panel `#controls`**: local time (Europe/Prague, CET/CEST by date) with a UTC / lead sub-line, playback buttons, the time axis (see above), then a foot with the slim legend `#legend` and the credit line (see "Header and panel, slimmer"). Floating card on desktop, full-width sheet on phones.
 - **Map fit**: `initApp()` measures the header and the panel and passes them to `fitBounds` as padding (`zoomSnap: 0.1`), so the domain fills the free area on any screen.
 - **Dataset switch keeps the time**: since 2026-11-13 through `wantTime` on the fixed axis (see above).
 - **Lead time** is counted from the run of the step's own chunk (`ts.run`), not from the step index.
@@ -80,7 +96,7 @@ rclone sync --progress \
 - **Dataset switch keeps the map view** (centre and zoom), like it keeps the time; `fitBounds` runs on the first load only.
 - **Zoom**: Leaflet's wheel zoom is off; `initSmoothZoom()` in map.js moves a goal zoom on every wheel event and the map glides to it with the cursor point fixed (240 px of scroll per level, pinch = wheel + ctrlKey 50 px per level, Safari gesture events on a Mac). It uses Leaflet internals `_moveStart` / `_move` / `_moveEnd` (Leaflet is pinned to 1.9.4). Zoom range 3–13.
 - **Precipitation scale** (`PREC_STOPS` in index.html): nothing below 0.1 mm/h, then light blue, blue, green, yellow, orange, red, magenta at 0.1, 0.5, 1, 2, 5, 10, 20, 50 mm/h; overlay opacity 0.92 for precipitation, 0.65 for temperature. The precipitation legend gives every stop the same width (a linear bar would squeeze 0.1–2 mm/h into its first 4 %).
-- **Stale-page guard** (inline script in `index.html`): the server sends no `Cache-Control`, so the page asks for its own `Last-Modified` and reloads once when the copy in the browser is older. The server's `.htaccess` is not ours to edit.
+- **Stale-page guard** (inline script in `index.html`): the page asks for its own `Last-Modified` and reloads once when the copy in the browser is older. Since 2026-11-13 the server also sends `Cache-Control: no-cache` for `index.html` (see "Deploying", point 3); the guard stays as a second line of defence.
 - Every script the redesign touched has a `?v=` cache-buster; bump it whenever the file changes.
 
 ## Work log 2026-11-10 / 11 (start here next time)
@@ -131,9 +147,17 @@ Done, in `wrf-forecast` (commit `e796f8a`, deployed on skirit) and here:
 7. Licence check of all sources: wording on the page matches the providers' pages; the Esri credit text was corrected.
 
 Open, the user's call:
-- E-mail to the university help desk (Ing. Tomáš Kotek, Ph.D.) about gzip and `Cache-Control` in `.htaccess` was drafted for the user on 2026-11-13; nothing was changed on the server.
+- (done 2026-11-13: the help desk agreed, `.htaccess` now compresses and sends `Cache-Control`, see "Deploying", point 3)
 - Base map: Esri retires World Light Gray Base in December 2029, and the terms for use without an account are unclear. A base map with clear open terms would settle both.
 - Credit text in compact mode is small (11 px).
+
+## Work log 2026-11-13 evening / 14 (help-desk answer, slimmer panel, all models at a point)
+
+1. `.htaccess`: backup, compression, `Cache-Control: no-cache` for `index.html` and `manifest.json`; verified (HTTP 200 on every kind of file, HTTPS redirect, 403 on a directory, 304 on a conditional request).
+2. The user found the panel overloaded ("2026-11-13 08:00 UTC · run +20 h", "Run … · 3 km · every 1 h", a huge legend): run moved to the header, sub-line shortened, legend slimmed, run-info row removed.
+3. "Compare models": the ensemble view of all ten datasets at the pinned point, which the user called one of the most important features.
+
+`tools/dev/check_page.py` got the lines ENS / ENS2 / ENSCHK / ENSOFF (panel rectangle, state of every member, the line of the dataset on the map compared with the map's own numbers, hover, click, toggling a model). A browser keeps `js/*.js?v=N` in its cache: bump the number in `index.html` before re-running the check after an edit.
 
 ## Data flow & file format
 
@@ -177,12 +201,14 @@ js/
   map.js              ← initApp, gridGeomFor, CanvasOverlay, initSmoothZoom, render (+ mrtvé marchingSquares/smooth/renderIsolinesSVG)
   controls.js         ← initAxis, setTime, showTime, go, stepBy, setStep, timesChanged, drawCover, buildTicks, pragueTime, subText, leadHours, fmtRun, togglePlay, cycleSpeed, setVar, updateLegend, setCompact/toggleCompact/initCompact
   tooltip.js          ← probe, elevAt, nearMapControl, onHover, onMapClick, setPin/unpin/restorePin, refreshTip, placePinnedTip
+  ensemble.js         ← openEnsemble/closeEnsemble, ensBuild, ensPrepare/ensRead, ensChart, ensTable (všechny modely v připnutém bodě)
+  series-worker.js    ← worker: přečte jeden chunk a vrátí hodnoty jednoho bodu sítě (není v <script>, spouští ho ensemble.js)
   locate.js           ← initLocate, toggleLocate, drawMyPos, toast (poloha zařízení)
   app.js              ← keyboard listener (15)
 ```
 
 ### Pořadí `<script>` v index.html — KRITICKÉ, zachovat
-`leaflet CDN → colors → data → datasets → layers → boundaries → geo → map → controls → tooltip → locate → credits → hlavní <script> (STATE/COLORMAPS/toggleIsolines) → app.js (poslední)`. `map.js` volá `L.ImageOverlay.extend` už při načtení, takže Leaflet musí být načten před ním.
+`leaflet CDN → colors → data → datasets → layers → boundaries → geo → map → controls → tooltip → ensemble → locate → credits → hlavní <script> (STATE/COLORMAPS/toggleIsolines) → app.js (poslední)`. `map.js` volá `L.ImageOverlay.extend` už při načtení, takže Leaflet musí být načten před ním.
 
 Důvod: všechny moduly **sdílejí globální stav z hlavního `<script>` bloku** a odkazují na sebe navzájem. Nepoužívají ES moduly (`type="module"`), ale **klasické globální funkce** — každý modul je `<script src="...">` načtený jako globál a volá ostatní **až za běhu**, takže stačí, aby definice existovaly dřív, než se daná funkce skutečně zavolá. `app.js` je záměrně **poslední** (za hlavním blokem), protože registruje keyboard listener volající funkce všech modulů.
 

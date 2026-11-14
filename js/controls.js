@@ -26,6 +26,7 @@ let stepTimes=[];            // ms of every entry of allTimesteps
 let stepH=1;                 // time step of the dataset on screen [h]
 let cover={from:null,to:null,loaded:[]};   // ms: dataset range and loaded [from, to] pieces
 let _shownTs=null,_shownVar=null;
+let resLabel='';             // resolution of the dataset on screen (data.js resText)
 
 function isoMs(s){return Date.parse(String(s).slice(0,19)+'Z');}
 function clampAxis(t){return Math.max(axis.t0,Math.min(axis.t1,t));}
@@ -69,8 +70,8 @@ function timesChanged(){
   const lab=stepH+'h';
   document.getElementById('btn-prev').textContent='−'+lab;
   document.getElementById('btn-next').textContent='+'+lab;
-  document.getElementById('m-every').textContent=stepH+' h';
   showTime();
+  if(typeof ensDataChanged==='function')ensDataChanged();   // "all models" panel (ensemble.js)
 }
 
 function nearestStep(t){
@@ -100,6 +101,7 @@ function showTime(){
     sl.value=(wantTime-axis.t0)/HOUR;
     document.getElementById('t-display').innerHTML=timeHtml(wantTime);
     document.getElementById('t-sub').textContent='loading…';
+    showRun(null);
     return;
   }
   step=i;
@@ -107,7 +109,8 @@ function showTime(){
   sl.value=(ts.ms-axis.t0)/HOUR;
   document.getElementById('t-display').innerHTML=timeHtml(ts.ms);
   document.getElementById('t-sub').textContent=subText(ts);
-  document.getElementById('m-run').textContent=fmtRun(ts.run);
+  showRun(ts.run);
+  if(typeof ensTimeChanged==='function')ensTimeChanged();
   if(ts!==_shownTs||varName!==_shownVar){
     _shownTs=ts;_shownVar=varName;
     render();
@@ -164,10 +167,11 @@ function timeHtml(ms){
          `<span class="t-clock">${p.hour}:${p.minute}</span><span class="t-zone">${p.zone}</span>`;
 }
 
-// Second line under the time: UTC time and the lead time of the step.
+// Second line under the time: UTC time and the lead time of the step
+// ("08:00 UTC · +20 h"). The run itself is in the header (showRun).
 function subText(ts){
   const lead=leadHours(ts);
-  return `${ts.time.replace('T',' ').slice(0,16)} UTC`+(lead===null?'':` · run +${lead} h`);
+  return `${ts.time.slice(11,16)} UTC`+(lead===null?'':` · +${lead} h`);
 }
 
 // Lead time in hours counted from the model run of the step's own chunk (the
@@ -183,6 +187,21 @@ function leadHours(ts){
 function fmtRun(r){
   r=r||'—';
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r) ? r.replace('T',' ').slice(0,16)+' UTC' : r;
+}
+
+// Run in the header: "12 Nov 12 UTC"; the full time, the resolution and the
+// time step are in its tooltip. Two elements carry it (.run-txt): next to
+// the dataset select on wide windows, under the title on narrow ones.
+const _MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let _shownRun;
+function showRun(r){
+  const key=(r||'')+'|'+resLabel+'|'+stepH;
+  if(key===_shownRun)return;
+  _shownRun=key;
+  const ok=r&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(r);
+  const txt=ok?`${+r.slice(8,10)} ${_MON[+r.slice(5,7)-1]} ${r.slice(11,13)} UTC`:(r||'—');
+  const tip=(ok?`Model run started ${fmtRun(r)}`:'Model run')+(resLabel?` · grid ${resLabel}`:'')+` · output every ${stepH} h`;
+  document.querySelectorAll('.run-txt').forEach(e=>{e.textContent=txt;e.parentNode.title=tip;});
 }
 
 function togglePlay(){
@@ -219,8 +238,10 @@ function setVar(v){
 // ══════════════════════════════════════════════════════════════════════════
 function updateLegend(){
   const isTmp=varName==='temp_c';
-  const unit=isTmp?'[°C]':'[mm·h⁻¹]';
-  document.getElementById('leg-title').textContent=isTmp?`2 m temperature ${unit}`:`Precipitation ${unit}`;
+  // Only the unit is written out: the variable is on the switch in the header.
+  const lt=document.getElementById('leg-title');
+  lt.textContent=isTmp?'°C':'mm/h';
+  lt.title=isTmp?'2 m temperature [°C]':'Precipitation [mm/h]';
   const rgba=s=>`rgba(${s.r},${s.g},${s.b},${(s.a/255).toFixed(2)})`;
   let grad,labs;   // labs: [{v, p}] with p = position on the bar in %
   if(isTmp){
@@ -240,10 +261,10 @@ function updateLegend(){
     labs=stops.map((s,i)=>({v:s.v,p:i/n*100}));
   }
   document.getElementById('leg-bar').style.background=`linear-gradient(to right, ${grad})`;
-  // A label closer than 9 % of the bar to the previous one is skipped so they never overlap.
+  // A label closer than 11 % of the bar to the previous one is skipped so they never overlap.
   let last=-99,html='';
   labs.forEach(l=>{
-    if(l.p-last<9)return;
+    if(l.p-last<11)return;
     last=l.p;
     const cls=l.p<3?' class="first"':(l.p>97?' class="last"':'');
     html+=`<span${cls} style="left:${l.p.toFixed(1)}%">${l.v}</span>`;
